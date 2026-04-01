@@ -34,3 +34,11 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# AI assistant config (not project code)
+.claude/
+CLAUDE.md
+BOUNTY.md
+.gitmodules
+.env.example
+cleanup.ps1
