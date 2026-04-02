@@ -1,15 +1,19 @@
 /**
- * Solana Glossary MCP Server
- * 
- * Exposes the @stbr/solana-glossary SDK as MCP tools, resources, and prompts
- * for intelligent Solana knowledge access from any LLM client.
- * 
+ * Solana Intelligence MCP Server v2.0
+ *
+ * Comprehensive MCP server with 16 tools:
+ * - 9 glossary tools (lookup, search, suggest, semantic, category, explain, learning-path, compare, random)
+ * - 7 live Solana tools (wallet balance, token balance, token price, transactions, explain TX, address info, swap simulation)
+ *
  * Features:
- * - 7 tools: lookup, search, category, explain (graph DFS), learning-path (graph BFS), compare, random
- * - Resources: categories, terms, stats, full glossary (all navigable by URI)
- * - Resource templates: dynamic term + localized term/category lookups
- * - i18n: all tools and resources support pt-BR, es, and en
- * - Graph engine: BFS/DFS on term cross-references for deep exploration
+ * - Fuzzy search (Levenshtein + Dice coefficient)
+ * - Semantic search (TF-IDF + cosine similarity)
+ * - Live blockchain data via Solana RPC (Helius)
+ * - Real-time prices + swap simulation via Jupiter API
+ * - Address classification and TX analysis
+ * - Practical code examples and tag system
+ * - 20+ known Solana program identification
+ * - i18n support (en, pt, es)
  */
 
 import { z } from "zod";
@@ -18,7 +22,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { allTerms, getCategories, getTerm } from "@stbr/solana-glossary";
 
-// Tools
+// ─── Glossary Tools ─────────────────────────────────────────────
 import { lookupTermSchema, lookupTerm } from "./tools/lookup.js";
 import { searchGlossarySchema, searchGlossary } from "./tools/search.js";
 import { listCategorySchema, listCategory } from "./tools/category.js";
@@ -26,14 +30,20 @@ import { explainConceptSchema, explainConceptTool } from "./tools/explain.js";
 import { learningPathSchema, learningPath } from "./tools/learning-path.js";
 import { compareTermsSchema, compareTerms } from "./tools/compare.js";
 import { randomTermSchema, randomTerm } from "./tools/random.js";
+import { suggestTermsSchema, suggestTerms } from "./tools/glossary/suggest.js";
+import { semanticSearchSchema, semanticSearchTool } from "./tools/glossary/semantic-search.js";
 
-// Resources
+// ─── Solana Live Tools ──────────────────────────────────────────
+import { getWalletBalanceSchema, getWalletBalance } from "./tools/solana/wallet.js";
+import { getTokenBalanceSchema, getTokenBalance, getTokenPriceSchema, getTokenPriceTool } from "./tools/solana/tokens.js";
+import { getRecentTransactionsSchema, getRecentTransactionsTool, explainTransactionSchema, explainTransactionTool as explainTxTool } from "./tools/solana/transactions.js";
+import { whatIsThisAddressSchema, whatIsThisAddressTool } from "./tools/solana/address-info.js";
+import { simulateSwapSchema, simulateSwapTool } from "./tools/solana/swap.js";
+
+// ─── Infrastructure ─────────────────────────────────────────────
 import { readResource } from "./resources/index.js";
-
-// Graph stats
 import { getGraphStats, getHubTerms } from "./graph.js";
-
-// I18n
+import { checkServiceStatus } from "./utils/config.js";
 import {
   searchTermsLocalized,
   getTermsByCategoryLocalized,
@@ -46,14 +56,16 @@ import {
 
 const server = new McpServer({
   name: "solana-glossary",
-  version: "1.0.0",
+  version: "2.0.0",
 });
 
-// ─── Tools ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// GLOSSARY TOOLS (9)
+// ═══════════════════════════════════════════════════════════════
 
 server.tool(
   "lookup_term",
-  "Look up a Solana term by ID, name, or alias. Returns the definition, category, aliases, and related terms. Supports i18n (en, pt, es).",
+  "Look up a Solana term by ID, name, or alias. Returns the definition, category, aliases, related terms, and practical code examples when available. Supports i18n (en, pt, es). If the term is not found, suggests similar terms via fuzzy matching.",
   lookupTermSchema.shape,
   async (input) => {
     const result = lookupTerm(input);
@@ -67,6 +79,26 @@ server.tool(
   searchGlossarySchema.shape,
   async (input) => {
     const result = searchGlossary(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "suggest_terms",
+  "Fuzzy term suggestions for misspelled or partial queries. Uses Levenshtein distance + Dice coefficient for intelligent typo correction. Great for when 'search_glossary' returns nothing.",
+  suggestTermsSchema.shape,
+  async (input) => {
+    const result = suggestTerms(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "semantic_search",
+  "Natural language search across the Solana glossary using TF-IDF and cosine similarity. Ask questions like 'how does staking work?' or 'what secures the network?' instead of exact keywords.",
+  semanticSearchSchema.shape,
+  async (input) => {
+    const result = semanticSearchTool(input);
     return { content: [{ type: "text" as const, text: result }] };
   }
 );
@@ -121,7 +153,83 @@ server.tool(
   }
 );
 
-// ─── Resources ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// SOLANA LIVE TOOLS (7)
+// ═══════════════════════════════════════════════════════════════
+
+server.tool(
+  "get_wallet_balance",
+  "Get the SOL balance of any Solana wallet address. Returns balance in SOL and lamports, with USD conversion via Jupiter price feed.",
+  getWalletBalanceSchema.shape,
+  async (input) => {
+    const result = await getWalletBalance(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "get_token_balance",
+  "Get all SPL token holdings for a Solana wallet. Shows token balances with USD values when available. Filters out zero-balance accounts by default.",
+  getTokenBalanceSchema.shape,
+  async (input) => {
+    const result = await getTokenBalance(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "get_token_price",
+  "Get the real-time USD price of any Solana token via Jupiter Price API. Supports token symbols (SOL, USDC, JUP, BONK, etc.) or mint addresses.",
+  getTokenPriceSchema.shape,
+  async (input) => {
+    const result = await getTokenPriceTool(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "get_recent_transactions",
+  "Get recent transaction history for any Solana address. Shows status, timestamp, slot, and signature for each transaction.",
+  getRecentTransactionsSchema.shape,
+  async (input) => {
+    const result = await getRecentTransactionsTool(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "explain_transaction",
+  "Parse and explain a Solana transaction in detail. Identifies programs involved, decodes instructions, shows balance changes, and labels known programs (20+ identified).",
+  explainTransactionSchema.shape,
+  async (input) => {
+    const result = await explainTxTool(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "what_is_this_address",
+  "Classify any Solana address — determines if it's a wallet, program, token mint, token account, stake account, or vote account. Identifies 20+ known programs by name.",
+  whatIsThisAddressSchema.shape,
+  async (input) => {
+    const result = await whatIsThisAddressTool(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+server.tool(
+  "simulate_swap",
+  "Simulate a token swap via Jupiter aggregator WITHOUT executing. Shows expected output, minimum received, price impact, slippage, and route details. Supports 14 known tokens.",
+  simulateSwapSchema.shape,
+  async (input) => {
+    const result = await simulateSwapTool(input);
+    return { content: [{ type: "text" as const, text: result }] };
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// RESOURCES
+// ═══════════════════════════════════════════════════════════════
 
 server.resource(
   "glossary-full",
@@ -145,7 +253,6 @@ server.resource(
   }
 );
 
-// Register each category as a resource
 for (const cat of getCategories()) {
   server.resource(
     `category-${cat}`,
@@ -159,9 +266,10 @@ for (const cat of getCategories()) {
   );
 }
 
-// ─── Resource Templates ─────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// RESOURCE TEMPLATES
+// ═══════════════════════════════════════════════════════════════
 
-// Dynamic term lookup by ID
 server.resource(
   "term-by-id",
   new ResourceTemplate("solana-glossary://term/{termId}", {
@@ -191,7 +299,6 @@ server.resource(
   }
 );
 
-// Localized term lookup
 server.resource(
   "localized-term",
   new ResourceTemplate("solana-glossary://{locale}/term/{termId}", {
@@ -215,7 +322,6 @@ server.resource(
   }
 );
 
-// Localized category lookup
 server.resource(
   "localized-category",
   new ResourceTemplate("solana-glossary://{locale}/category/{category}", {
@@ -233,7 +339,9 @@ server.resource(
   }
 );
 
-// ─── Prompts ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// PROMPTS
+// ═══════════════════════════════════════════════════════════════
 
 server.prompt(
   "solana-context",
@@ -289,7 +397,6 @@ server.prompt(
   async ({ code, locale }) => {
     const lang = validateLocale(locale);
 
-    // Find terms that appear in the code
     const codeLC = code.toLowerCase();
     const foundTerms = allTerms.filter((t) => {
       if (codeLC.includes(t.id)) return true;
@@ -346,8 +453,6 @@ server.prompt(
     }
 
     const localized = localizeTerms(pool, lang);
-
-    // Shuffle and pick questions
     const shuffled = [...localized].sort(() => Math.random() - 0.5);
     const questions = shuffled.slice(0, numQuestions);
 
@@ -360,11 +465,8 @@ server.prompt(
 
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      // Get 3 wrong answers from different terms
       const wrongPool = localized.filter((t) => t.id !== q.id).sort(() => Math.random() - 0.5);
       const wrongAnswers = wrongPool.slice(0, 3).map((t) => t.term);
-      
-      // Shuffle correct + wrong answers
       const allAnswers = [q.term, ...wrongAnswers].sort(() => Math.random() - 0.5);
       const letters = ["A", "B", "C", "D"];
 
@@ -407,20 +509,38 @@ server.prompt(
   }
 );
 
-// ─── Start ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════════════
 
 async function main() {
   const stats = getGraphStats();
   const hubs = getHubTerms(3);
 
+  // Check service status
+  let rpcStatus = "⏳ checking...";
+  let jupiterStatus = "⏳ checking...";
+
+  checkServiceStatus().then(({ rpc, jupiter, rpcUrl }) => {
+    rpcStatus = rpc ? "✅ connected" : "❌ unreachable";
+    jupiterStatus = jupiter ? "✅ connected" : "❌ unreachable";
+    console.error(
+      `\n🔌 Service Status:\n` +
+      `   Solana RPC: ${rpcStatus} (${rpcUrl.includes("helius") ? "Helius" : "Public"})\n` +
+      `   Jupiter API: ${jupiterStatus}\n`
+    );
+  }).catch(() => {});
+
   console.error(
-    `🧠 Solana Glossary MCP Server v1.0.0\n` +
+    `🧠 Solana Intelligence MCP Server v2.0.0\n` +
     `📚 ${allTerms.length} terms loaded\n` +
     `📂 ${getCategories().length} categories\n` +
     `🔗 ${stats.totalEdges} cross-references (avg degree: ${stats.averageDegree})\n` +
     `⭐ Hub terms: ${hubs.map((h) => `${h.term.term} (${h.connections})`).join(", ")}\n` +
     `🌐 Locales: en, pt, es\n` +
-    `🛠️ 7 tools, ${getCategories().length + 2} resources, 3 resource templates, 3 prompts\n` +
+    `🛠️ 16 tools (9 glossary + 7 live Solana)\n` +
+    `📦 ${getCategories().length + 2} resources, 3 resource templates, 3 prompts\n` +
+    `🔍 Fuzzy search + TF-IDF semantic search enabled\n` +
     `Listening on stdio...`
   );
 

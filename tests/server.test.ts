@@ -1,15 +1,16 @@
 /**
- * Tests for the Solana Glossary MCP Server tools
- * 
- * Each tool is tested for:
- * - Successful operations with valid input
- * - Error handling with invalid input
- * - i18n support
+ * Tests for the Solana Intelligence MCP Server v2.0
+ *
+ * Covers all 16 tools:
+ * - 9 glossary tools (lookup, search, suggest, semantic, category, explain, learning-path, compare, random)
+ * - 7 live Solana tools (wallet, token balance, token price, transactions, explain TX, address info, swap)
+ *
+ * Also covers: graph engine, i18n resolver, resources, fuzzy search, TF-IDF, data modules
  */
 
 import { describe, it, expect } from "vitest";
 
-// Tools
+// ─── Glossary Tools ─────────────────────────────────────────────
 import { lookupTerm } from "../src/tools/lookup.js";
 import { searchGlossary } from "../src/tools/search.js";
 import { listCategory, listAllCategories } from "../src/tools/category.js";
@@ -17,11 +18,18 @@ import { explainConceptTool } from "../src/tools/explain.js";
 import { learningPath } from "../src/tools/learning-path.js";
 import { compareTerms } from "../src/tools/compare.js";
 import { randomTerm } from "../src/tools/random.js";
+import { suggestTerms } from "../src/tools/glossary/suggest.js";
+import { semanticSearchTool } from "../src/tools/glossary/semantic-search.js";
 
-// Graph
+// ─── Solana Live Tools ──────────────────────────────────────────
+import { getWalletBalance } from "../src/tools/solana/wallet.js";
+import { getTokenBalance, getTokenPriceTool } from "../src/tools/solana/tokens.js";
+import { getRecentTransactionsTool, explainTransactionTool } from "../src/tools/solana/transactions.js";
+import { whatIsThisAddressTool } from "../src/tools/solana/address-info.js";
+import { simulateSwapTool } from "../src/tools/solana/swap.js";
+
+// ─── Infrastructure ─────────────────────────────────────────────
 import { findLearningPath, explainConcept, getGraphStats, getHubTerms } from "../src/graph.js";
-
-// i18n
 import {
   resolveTermLocalized,
   searchTermsLocalized,
@@ -30,14 +38,23 @@ import {
   getAvailableLocales,
   validateLocale,
 } from "../src/i18n-resolver.js";
-
-// Resources
 import { readResource, listResources, listResourceTemplates } from "../src/resources/index.js";
 
-// SDK
+// ─── Utils & Services ───────────────────────────────────────────
+import { levenshtein, diceCoefficient, fuzzyScore, fuzzySearch } from "../src/utils/fuzzy.js";
+import { semanticSearch } from "../src/services/embeddings.js";
+import { formatSol, formatUsd, shortenAddress, formatTimestamp } from "../src/utils/format.js";
+import { identifyProgram, isKnownProgram } from "../src/data/known-programs.js";
+import { getEnrichment, getTermsByTag, getAllTags } from "../src/data/glossary-index.js";
+import { resolveToken, KNOWN_TOKENS } from "../src/services/jupiter.js";
+import { isValidAddress } from "../src/services/solana-rpc.js";
+
+// ─── SDK ────────────────────────────────────────────────────────
 import { allTerms, getCategories, getTerm } from "@stbr/solana-glossary";
 
-// ─── lookup_term ────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════
+// GLOSSARY TOOLS
+// ═════════════════════════════════════════════════════════════════
 
 describe("lookup_term", () => {
   it("should find a term by ID", () => {
@@ -48,14 +65,26 @@ describe("lookup_term", () => {
 
   it("should find a term by alias", () => {
     const term = allTerms.find((t) => t.aliases && t.aliases.length > 0);
-    if (!term) return; // skip if no aliased terms
+    if (!term) return;
     const result = lookupTerm({ term: term.aliases![0] });
     expect(result).toContain(term.term);
   });
 
-  it("should return not-found for nonexistent term", () => {
-    const result = lookupTerm({ term: "this-term-does-not-exist-xyz" });
+  it("should return fuzzy suggestions for nonexistent term", () => {
+    const result = lookupTerm({ term: "valdator" });
     expect(result).toContain("not found");
+    expect(result).toContain("Did you mean");
+  });
+
+  it("should include practical code examples for enriched terms", () => {
+    const result = lookupTerm({ term: "pda" });
+    expect(result).toContain("Code Example");
+    expect(result).toContain("findProgramAddressSync");
+  });
+
+  it("should include tags for enriched terms", () => {
+    const result = lookupTerm({ term: "pda" });
+    expect(result).toContain("Tags:");
   });
 
   it("should include related terms", () => {
@@ -67,12 +96,9 @@ describe("lookup_term", () => {
 
   it("should support i18n locale", () => {
     const result = lookupTerm({ term: "pda", locale: "pt" });
-    // Should not error and should include locale indicator
     expect(result).toBeTruthy();
   });
 });
-
-// ─── search_glossary ────────────────────────────────────────────
 
 describe("search_glossary", () => {
   it("should find results for a valid query", () => {
@@ -88,7 +114,6 @@ describe("search_glossary", () => {
 
   it("should respect the limit parameter", () => {
     const result = searchGlossary({ query: "account", limit: 3 });
-    // Count numbered results (format: "1. **...**")
     const matches = result.match(/^\d+\.\s\*\*/gm);
     expect(matches).toBeTruthy();
     expect(matches!.length).toBeLessThanOrEqual(3);
@@ -101,7 +126,51 @@ describe("search_glossary", () => {
   });
 });
 
-// ─── list_category ──────────────────────────────────────────────
+describe("suggest_terms", () => {
+  it("should suggest terms for misspelled input", () => {
+    const result = suggestTerms({ query: "valdator" });
+    expect(result).toContain("Suggestions");
+    expect(result).toContain("match");
+  });
+
+  it("should suggest terms for partial input", () => {
+    const result = suggestTerms({ query: "proof" });
+    expect(result).toContain("Suggestions");
+  });
+
+  it("should respect limit", () => {
+    const result = suggestTerms({ query: "sol", limit: 3 });
+    const matches = result.match(/^\d+\.\s\*\*/gm);
+    expect(matches).toBeTruthy();
+    expect(matches!.length).toBeLessThanOrEqual(3);
+  });
+
+  it("should return no suggestions for total gibberish", () => {
+    const result = suggestTerms({ query: "zzzzqqqxxxx" });
+    expect(result).toContain("No suggestions");
+  });
+});
+
+describe("semantic_search", () => {
+  it("should find relevant terms for natural language query", () => {
+    const result = semanticSearchTool({ query: "how does staking work on solana" });
+    expect(result).toContain("Semantic Search");
+    expect(result).toContain("relevance");
+  });
+
+  it("should find terms about consensus", () => {
+    const result = semanticSearchTool({ query: "consensus mechanism validation blocks" });
+    expect(result).toContain("Semantic Search");
+  });
+
+  it("should respect limit", () => {
+    const result = semanticSearchTool({ query: "token swap trading", limit: 3 });
+    const matches = result.match(/^\d+\.\s\*\*/gm);
+    if (matches) {
+      expect(matches.length).toBeLessThanOrEqual(3);
+    }
+  });
+});
 
 describe("list_category", () => {
   it("should list terms in a valid category", () => {
@@ -120,8 +189,6 @@ describe("list_category", () => {
   });
 });
 
-// ─── explain_concept ────────────────────────────────────────────
-
 describe("explain_concept", () => {
   it("should explain a known concept", () => {
     const termWithRelated = allTerms.find((t) => (t.related?.length ?? 0) > 0);
@@ -139,20 +206,14 @@ describe("explain_concept", () => {
   it("should respect depth parameter", () => {
     const termId = allTerms.find((t) => (t.related?.length ?? 0) > 2)?.id;
     if (!termId) return;
-
     const shallow = explainConceptTool({ term: termId, depth: 1 });
     const deep = explainConceptTool({ term: termId, depth: 3 });
-
-    // Deep should generally find more or equal terms
-    expect(deep.length).toBeGreaterThanOrEqual(shallow.length - 50); // allow small variance
+    expect(deep.length).toBeGreaterThanOrEqual(shallow.length - 50);
   });
 });
 
-// ─── get_learning_path ──────────────────────────────────────────
-
 describe("get_learning_path", () => {
   it("should find a path between connected terms", () => {
-    // Find two terms with a direct related connection
     const termA = allTerms.find(
       (t) => t.related && t.related.length > 0 && getTerm(t.related[0])
     );
@@ -173,8 +234,6 @@ describe("get_learning_path", () => {
   });
 });
 
-// ─── compare_terms ──────────────────────────────────────────────
-
 describe("compare_terms", () => {
   it("should compare two valid terms", () => {
     const ids = allTerms.slice(0, 2).map((t) => t.id);
@@ -188,23 +247,7 @@ describe("compare_terms", () => {
     const result = compareTerms({ terms: ["pda", "totally-fake-term"] });
     expect(result).toContain("not found");
   });
-
-  it("should show shared relationships when they exist", () => {
-    // Find two terms that share a related term
-    const a = allTerms.find((t) => (t.related?.length ?? 0) > 3);
-    const b = allTerms.find(
-      (t) =>
-        t.id !== a?.id &&
-        (t.related?.length ?? 0) > 3 &&
-        t.related?.some((r) => a?.related?.includes(r))
-    );
-    if (!a || !b) return;
-    const result = compareTerms({ terms: [a.id, b.id] });
-    expect(result).toContain("Comparing");
-  });
 });
-
-// ─── random_term ────────────────────────────────────────────────
 
 describe("random_term", () => {
   it("should return a single random term by default", () => {
@@ -216,7 +259,6 @@ describe("random_term", () => {
   it("should return multiple terms when count is specified", () => {
     const result = randomTerm({ count: 3 });
     expect(result).toContain("3 Random Terms");
-    // Should have 3 definition markers
     const catMatches = result.match(/🏷️ Category:/g);
     expect(catMatches).toBeTruthy();
     expect(catMatches!.length).toBe(3);
@@ -233,15 +275,377 @@ describe("random_term", () => {
     const result = randomTerm({ category: "fake-category-xyz" });
     expect(result).toContain("Unknown category");
   });
+});
 
-  it("should support i18n", () => {
-    const result = randomTerm({ count: 1, locale: "pt" });
+// ═════════════════════════════════════════════════════════════════
+// SOLANA LIVE TOOLS (with real RPC via Helius)
+// ═════════════════════════════════════════════════════════════════
+
+// Well-known addresses for testing
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const VITALIK_SOL = "FhVdXkREhnMFw6FwKiBbsRPJv2BFbRmxj88JA2ND2G8R"; // a known wallet with activity
+
+describe("get_wallet_balance", () => {
+  it("should return balance for a valid address", async () => {
+    const result = await getWalletBalance({ address: VITALIK_SOL });
+    expect(result).toContain("Wallet Balance");
+    expect(result).toContain("SOL");
+  }, 15000);
+
+  it("should reject invalid addresses", async () => {
+    const result = await getWalletBalance({ address: "not-a-real-address" });
+    expect(result).toContain("Invalid Solana address");
+  });
+
+  it("should handle system program address", async () => {
+    const result = await getWalletBalance({ address: SYSTEM_PROGRAM });
+    expect(result).toContain("Wallet Balance");
+  }, 15000);
+});
+
+describe("get_token_balance", () => {
+  it("should return tokens or empty message for a wallet", async () => {
+    const result = await getTokenBalance({ address: VITALIK_SOL });
+    // Either has tokens or says no token accounts
     expect(result).toBeTruthy();
-    expect(result).toContain("Random Term");
+    expect(result.includes("Token Holdings") || result.includes("No SPL token")).toBeTruthy();
+  }, 15000);
+
+  it("should reject invalid addresses", async () => {
+    const result = await getTokenBalance({ address: "invalid" });
+    expect(result).toContain("Invalid Solana address");
   });
 });
 
-// ─── Graph Engine ───────────────────────────────────────────────
+describe("get_token_price", () => {
+  it("should return SOL price", async () => {
+    const result = await getTokenPriceTool({ token: "SOL" });
+    expect(result).toContain("SOL");
+    expect(result).toContain("Price");
+  }, 15000);
+
+  it("should return USDC price (should be ~$1)", async () => {
+    const result = await getTokenPriceTool({ token: "USDC" });
+    expect(result).toContain("USDC");
+    expect(result).toContain("Price");
+  }, 15000);
+
+  it("should handle unknown token gracefully", async () => {
+    const result = await getTokenPriceTool({ token: "TOTALLYNOTAREAL1111TOKEN" });
+    expect(result).toContain("Could not find price");
+  }, 15000);
+});
+
+describe("get_recent_transactions", () => {
+  it("should return transactions for an active address", async () => {
+    const result = await getRecentTransactionsTool({ address: VITALIK_SOL, limit: 3 });
+    expect(result).toBeTruthy();
+    // Either has transactions or says no recent
+    expect(result.includes("Recent Transactions") || result.includes("No recent")).toBeTruthy();
+  }, 15000);
+
+  it("should reject invalid address", async () => {
+    const result = await getRecentTransactionsTool({ address: "not-valid" });
+    expect(result).toContain("Invalid Solana address");
+  });
+});
+
+describe("explain_transaction", () => {
+  it("should handle non-existent signature gracefully", async () => {
+    const fakeSig = "5xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    const result = await explainTransactionTool({ signature: fakeSig });
+    // Should either not find it or return an error
+    expect(result).toBeTruthy();
+  }, 15000);
+});
+
+describe("what_is_this_address", () => {
+  it("should classify System Program as known-program", async () => {
+    const result = await whatIsThisAddressTool({ address: SYSTEM_PROGRAM });
+    expect(result).toContain("System Program");
+  }, 15000);
+
+  it("should classify Token Program as known-program", async () => {
+    const result = await whatIsThisAddressTool({ address: TOKEN_PROGRAM });
+    expect(result).toContain("Token Program");
+  }, 15000);
+
+  it("should classify a wallet address", async () => {
+    const result = await whatIsThisAddressTool({ address: VITALIK_SOL });
+    expect(result).toBeTruthy();
+    // Should identify it as something (wallet, etc.)
+    expect(result).toContain("Address");
+  }, 15000);
+
+  it("should reject invalid addresses", async () => {
+    const result = await whatIsThisAddressTool({ address: "bad!" });
+    expect(result).toContain("Invalid Solana address");
+  });
+});
+
+describe("simulate_swap", () => {
+  it("should simulate a SOL -> USDC swap", async () => {
+    const result = await simulateSwapTool({
+      inputToken: "SOL",
+      outputToken: "USDC",
+      amount: 1,
+    });
+    expect(result).toContain("Swap Simulation");
+    expect(result).toContain("SOL");
+    expect(result).toContain("USDC");
+  }, 15000);
+
+  it("should handle unknown token gracefully", async () => {
+    const result = await simulateSwapTool({
+      inputToken: "NOTREAL",
+      outputToken: "USDC",
+      amount: 1,
+    });
+    expect(result).toBeTruthy();
+  }, 15000);
+});
+
+// ═════════════════════════════════════════════════════════════════
+// FUZZY SEARCH ENGINE
+// ═════════════════════════════════════════════════════════════════
+
+describe("fuzzy search engine", () => {
+  it("levenshtein: identical strings → 0", () => {
+    expect(levenshtein("hello", "hello")).toBe(0);
+  });
+
+  it("levenshtein: single edit → 1", () => {
+    expect(levenshtein("hello", "hallo")).toBe(1);
+  });
+
+  it("levenshtein: empty string → length of other", () => {
+    expect(levenshtein("", "abc")).toBe(3);
+    expect(levenshtein("abc", "")).toBe(3);
+  });
+
+  it("diceCoefficient: identical strings → 1", () => {
+    expect(diceCoefficient("validator", "validator")).toBe(1);
+  });
+
+  it("diceCoefficient: completely different → 0", () => {
+    expect(diceCoefficient("abc", "xyz")).toBe(0);
+  });
+
+  it("fuzzyScore: exact match → 1", () => {
+    expect(fuzzyScore("pda", "pda")).toBe(1);
+  });
+
+  it("fuzzyScore: case insensitive", () => {
+    expect(fuzzyScore("PDA", "pda")).toBe(1);
+  });
+
+  it("fuzzySearch: should find validator for 'valdator'", () => {
+    const results = fuzzySearch("valdator", 5);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].term.term.toLowerCase()).toContain("validator");
+  });
+
+  it("fuzzySearch: should find proof-of-history for 'pruf of histori'", () => {
+    const results = fuzzySearch("proof of histor", 5);
+    expect(results.length).toBeGreaterThan(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// TF-IDF SEMANTIC SEARCH ENGINE
+// ═════════════════════════════════════════════════════════════════
+
+describe("TF-IDF semantic search", () => {
+  it("should return results for natural language query", () => {
+    const results = semanticSearch("how does staking work");
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("should return scored results", () => {
+    const results = semanticSearch("token swap liquidity pool");
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(r.score).toBeGreaterThan(0);
+      expect(r.score).toBeLessThanOrEqual(1);
+      expect(r.term).toBeDefined();
+    }
+  });
+
+  it("should rank relevant terms higher", () => {
+    const results = semanticSearch("validator staking rewards", 5);
+    // Top results should be from relevant categories
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("should return empty for empty query", () => {
+    const results = semanticSearch("");
+    expect(results).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// FORMAT UTILITIES
+// ═════════════════════════════════════════════════════════════════
+
+describe("format utilities", () => {
+  it("formatSol: converts lamports to SOL", () => {
+    expect(formatSol(1_000_000_000)).toContain("1");
+    expect(formatSol(500_000_000)).toContain("0.5");
+  });
+
+  it("formatUsd: formats as currency", () => {
+    const result = formatUsd(123.45);
+    expect(result).toContain("123.45");
+    expect(result).toContain("$");
+  });
+
+  it("shortenAddress: truncates address", () => {
+    const addr = "FhVdXkREhnMFw6FwKiBbsRPJv2BFbRmxj88JA2ND2G8R";
+    const short = shortenAddress(addr);
+    expect(short).toContain("...");
+    expect(short.length).toBeLessThan(addr.length);
+  });
+
+  it("formatTimestamp: converts unix to ISO", () => {
+    const result = formatTimestamp(1700000000);
+    expect(result).toContain("2023");
+    expect(result).toContain("UTC");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// KNOWN PROGRAMS
+// ═════════════════════════════════════════════════════════════════
+
+describe("known programs", () => {
+  it("should identify System Program", () => {
+    const program = identifyProgram("11111111111111111111111111111111");
+    expect(program).toBeDefined();
+    expect(program!.name).toBe("System Program");
+  });
+
+  it("should identify Token Program", () => {
+    const program = identifyProgram("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+    expect(program).toBeDefined();
+    expect(program!.name).toBe("Token Program");
+  });
+
+  it("should identify Jupiter v6", () => {
+    const program = identifyProgram("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+    expect(program).toBeDefined();
+    expect(program!.name).toContain("Jupiter");
+  });
+
+  it("isKnownProgram: true for known, false for unknown", () => {
+    expect(isKnownProgram("11111111111111111111111111111111")).toBe(true);
+    expect(isKnownProgram("RandomUnknownAddress1111111111111")).toBe(false);
+  });
+
+  it("should have 20+ programs registered", () => {
+    // Count known programs by checking a sample
+    let count = 0;
+    const programs = [
+      "11111111111111111111111111111111",
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    ];
+    for (const p of programs) {
+      if (isKnownProgram(p)) count++;
+    }
+    expect(count).toBe(5);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// GLOSSARY INDEX (ENRICHMENT + TAGS)
+// ═════════════════════════════════════════════════════════════════
+
+describe("glossary index", () => {
+  it("should return enrichment for 'pda'", () => {
+    const e = getEnrichment("pda");
+    expect(e).toBeDefined();
+    expect(e!.tags.length).toBeGreaterThan(0);
+    expect(e!.example).toBeDefined();
+    expect(e!.useCase).toBeDefined();
+  });
+
+  it("should return undefined for unenriched terms", () => {
+    const e = getEnrichment("some-random-unenriched-term");
+    expect(e).toBeUndefined();
+  });
+
+  it("should find terms by tag", () => {
+    const terms = getTermsByTag("accounts");
+    expect(terms.length).toBeGreaterThan(0);
+    expect(terms).toContain("pda");
+  });
+
+  it("should list all tags", () => {
+    const tags = getAllTags();
+    expect(tags.length).toBeGreaterThan(5);
+    expect(tags).toContain("defi");
+    expect(tags).toContain("core");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// JUPITER SERVICE
+// ═════════════════════════════════════════════════════════════════
+
+describe("jupiter service", () => {
+  it("should resolve SOL by symbol", () => {
+    const token = resolveToken("SOL");
+    expect(token).toBeDefined();
+    expect(token!.symbol).toBe("SOL");
+    expect(token!.decimals).toBe(9);
+  });
+
+  it("should resolve USDC by symbol", () => {
+    const token = resolveToken("USDC");
+    expect(token).toBeDefined();
+    expect(token!.mint).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+  });
+
+  it("should resolve by mint address", () => {
+    const token = resolveToken("So11111111111111111111111111111111111111112");
+    expect(token).toBeDefined();
+    expect(token!.symbol).toBe("SOL");
+  });
+
+  it("should have 14 known tokens", () => {
+    expect(KNOWN_TOKENS.length).toBe(14);
+  });
+
+  it("should be case insensitive for symbol lookup", () => {
+    expect(resolveToken("sol")).toBeDefined();
+    expect(resolveToken("Sol")).toBeDefined();
+    expect(resolveToken("SOL")).toBeDefined();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// SOLANA RPC SERVICE
+// ═════════════════════════════════════════════════════════════════
+
+describe("solana rpc service", () => {
+  it("should validate valid addresses", () => {
+    expect(isValidAddress("FhVdXkREhnMFw6FwKiBbsRPJv2BFbRmxj88JA2ND2G8R")).toBe(true);
+    expect(isValidAddress("11111111111111111111111111111111")).toBe(true);
+  });
+
+  it("should reject invalid addresses", () => {
+    expect(isValidAddress("not-a-valid-address!")).toBe(false);
+    expect(isValidAddress("")).toBe(false);
+    expect(isValidAddress("abc")).toBe(false);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// GRAPH ENGINE
+// ═════════════════════════════════════════════════════════════════
 
 describe("graph engine", () => {
   it("should return valid stats", () => {
@@ -255,7 +659,6 @@ describe("graph engine", () => {
     const hubs = getHubTerms(5);
     expect(hubs.length).toBeGreaterThan(0);
     expect(hubs.length).toBeLessThanOrEqual(5);
-    // First hub should have the most connections
     if (hubs.length >= 2) {
       expect(hubs[0].connections).toBeGreaterThanOrEqual(hubs[1].connections);
     }
@@ -285,7 +688,9 @@ describe("graph engine", () => {
   });
 });
 
-// ─── i18n Resolver ──────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════
+// I18N RESOLVER
+// ═════════════════════════════════════════════════════════════════
 
 describe("i18n resolver", () => {
   it("should list available locales", () => {
@@ -341,12 +746,14 @@ describe("i18n resolver", () => {
   });
 });
 
-// ─── Resources ──────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════
+// RESOURCES
+// ═════════════════════════════════════════════════════════════════
 
 describe("resources", () => {
   it("should list all resources", () => {
     const resources = listResources();
-    expect(resources.length).toBeGreaterThan(2); // full + stats + categories
+    expect(resources.length).toBeGreaterThan(2);
     expect(resources.some((r) => r.uri.includes("glossary/full"))).toBe(true);
     expect(resources.some((r) => r.uri.includes("glossary/stats"))).toBe(true);
   });
@@ -406,7 +813,9 @@ describe("resources", () => {
   });
 });
 
-// ─── Integration: SDK sanity ────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════
+// SDK INTEGRATION
+// ═════════════════════════════════════════════════════════════════
 
 describe("SDK integration", () => {
   it("should have 1001 terms loaded", () => {

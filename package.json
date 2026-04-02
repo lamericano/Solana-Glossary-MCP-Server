@@ -1,7 +1,7 @@
 {
   "name": "@stbr/solana-glossary-mcp",
-  "version": "1.0.0",
-  "description": "MCP Server that exposes the Solana Glossary as intelligent tools for LLMs.",
+  "version": "2.0.0",
+  "description": "Solana Intelligence MCP Server — 16 tools for glossary, live blockchain, DeFi, and semantic search.",
   "type": "module",
   "main": "dist/server.js",
   "bin": {
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@stbr/solana-glossary": "github:solanabr/solana-glossary"
+    "@solana/web3.js": "^1.98.4",
+    "@stbr/solana-glossary": "file:.."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

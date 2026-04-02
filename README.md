@@ -1,14 +1,14 @@
-# Solana Glossary MCP Server
+# Solana Intelligence MCP Server
 
-[![MCP](https://img.shields.io/badge/MCP-1.0-blueviolet)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-2.0-blueviolet)](https://modelcontextprotocol.io)
 [![Terms](https://img.shields.io/badge/terms-1001-brightgreen)](https://github.com/solanabr/solana-glossary)
-[![Tools](https://img.shields.io/badge/tools-7-blue)](./)
-[![Tests](https://img.shields.io/badge/tests-51%20passing-green)](./)
+[![Tools](https://img.shields.io/badge/tools-16-blue)](./)
+[![Tests](https://img.shields.io/badge/tests-108%20passing-green)](./)
 [![i18n](https://img.shields.io/badge/i18n-en%20pt%20es-orange)](./)
 
-**An MCP server that turns 1001 Solana glossary entries into intelligent LLM tools: lookup, search, graph-based concept exploration, learning paths, side-by-side comparisons, and random discovery. Full i18n support (🇺🇸 🇧🇷 🇪🇸).**
+**A comprehensive MCP server that combines 1001 Solana glossary terms with live blockchain data. 16 tools covering term lookup, fuzzy/semantic search, graph-based concept exploration, real-time wallet balances, token prices, transaction analysis, address classification, and swap simulation. Full i18n support (🇺🇸 🇧🇷 🇪🇸).**
 
-Built on top of the [`@stbr/solana-glossary`](https://github.com/solanabr/solana-glossary) SDK.
+Built on [`@stbr/solana-glossary`](https://github.com/solanabr/solana-glossary), [`@solana/web3.js`](https://github.com/solana-labs/solana-web3.js), and [Jupiter Lite API](https://lite-api.jup.ag).
 
 ---
 
@@ -16,12 +16,15 @@ Built on top of the [`@stbr/solana-glossary`](https://github.com/solanabr/solana
 
 | Feature | Description |
 |---------|-------------|
-| **7 tools** | `lookup_term`, `search_glossary`, `list_category`, `explain_concept`, `get_learning_path`, `compare_terms`, `random_term` |
-| **16 resources** | Full glossary, stats, and one resource per category, all navigable by URI |
-| **3 resource templates** | Dynamic term lookup, localized term, localized category with autocompletion |
-| **3 prompts** | `solana-context`, `explain-solana-code`, `solana-quiz` |
-| **Knowledge graph** | BFS/DFS traversal on term cross-references for deep exploration |
-| **i18n** | Every tool and resource supports `en`, `pt` (Portuguese), and `es` (Spanish) |
+| **16 tools** | 9 glossary + 7 live Solana (see full list below) |
+| **Fuzzy search** | Levenshtein + Dice coefficient for typo-tolerant matching |
+| **Semantic search** | TF-IDF + cosine similarity for natural language queries |
+| **Live blockchain** | SOL/token balances, transaction history, address classification via Helius RPC |
+| **DeFi integration** | Real-time token prices and swap simulation via Jupiter |
+| **Knowledge graph** | BFS/DFS traversal on 1200+ cross-references |
+| **Code examples** | Practical Solana code snippets for key terms |
+| **24 known programs** | System, SPL, DeFi, NFT, and infrastructure program identification |
+| **i18n** | Every glossary tool supports `en`, `pt`, and `es` |
 
 ---
 
@@ -64,12 +67,6 @@ npm run build
 }
 ```
 
-#### OpenAI Codex
-
-```bash
-codex --mcp-config '{"mcpServers":{"solana-glossary":{"command":"node","args":["/absolute/path/to/Solana-Glossary-MCP-Server/dist/server.js"]}}}'
-```
-
 #### Development (with auto-reload)
 
 ```bash
@@ -84,18 +81,44 @@ npm run inspector
 
 ---
 
-## Tools Reference
+## All 16 Tools
 
-### `lookup_term`
+### Glossary Tools (9)
 
-Look up a single Solana term by ID, name, or alias. Returns the full definition, category, aliases, and resolved related terms.
+| Tool | Description |
+|------|-------------|
+| `lookup_term` | Look up by ID, name, or alias. Includes code examples, tags, and fuzzy fallback suggestions |
+| `search_glossary` | Full-text search across 1001 terms with ranked results |
+| `suggest_terms` | Fuzzy suggestions for misspelled or partial queries (Levenshtein + Dice) |
+| `semantic_search` | Natural language search using TF-IDF cosine similarity |
+| `list_category` | Browse terms by category (14 available) |
+| `explain_concept` | DFS graph traversal for deep concept exploration |
+| `get_learning_path` | BFS shortest path between two concepts |
+| `compare_terms` | Side-by-side comparison of 2-5 terms |
+| `random_term` | Random term discovery and quiz generation |
+
+### Solana Live Tools (7)
+
+| Tool | Description |
+|------|-------------|
+| `get_wallet_balance` | SOL balance + USD conversion via Jupiter |
+| `get_token_balance` | SPL token holdings with USD values |
+| `get_token_price` | Real-time token price (14 known tokens + any mint address) |
+| `get_recent_transactions` | Transaction history with status and timestamps |
+| `explain_transaction` | Parse and decode a transaction with program identification |
+| `what_is_this_address` | Classify any address (wallet, program, token mint, stake, vote) |
+| `simulate_swap` | Jupiter swap simulation with route details and price impact |
+
+---
+
+## Tool Examples
+
+### `lookup_term` — Enhanced with code examples
 
 ```
-Input:  { term: "pda", locale?: "pt" }
-Output: Definition, category, aliases, related terms with previews
+Input:  { term: "pda" }
 ```
 
-**Example output:**
 ```
 📖 **Program Derived Address (PDA)**
 
@@ -103,171 +126,98 @@ An account address derived deterministically from a program ID...
 
 🏷️ Category: programming-model
 🔤 Aliases: PDA
+🏷️ Tags: accounts, security, anchor, seeds
+
+💡 **Use case:** Deterministic account addresses derived from seeds — no private key needed
+
+📝 **Code Example:**
+const [pda, bump] = PublicKey.findProgramAddressSync(
+  [Buffer.from("user"), wallet.toBuffer()],
+  programId
+);
 
 🔗 Related Terms:
   • Seeds: Byte arrays used as inputs to derive a PDA...
-  • Bump Seed: A single byte appended to PDA seeds...
 ```
 
----
-
-### `search_glossary`
-
-Full-text search across all 1001 terms. Searches names, definitions, IDs, and aliases with ranked results.
+**With i18n (`locale: "pt"`):**
 
 ```
-Input:  { query: "proof of history", limit?: 5, locale?: "es" }
-Output: Ranked results with definition previews and aliases
+Input:  { term: "pda", locale: "pt" }
 ```
 
----
-
-### `list_category`
-
-List all terms in a specific category. 14 categories available: `core-protocol`, `programming-model`, `token-ecosystem`, `defi`, `zk-compression`, `infrastructure`, `security`, `dev-tools`, `network`, `blockchain-general`, `web3`, `programming-fundamentals`, `ai-ml`, `solana-ecosystem`.
-
 ```
-Input:  { category: "defi", locale?: "pt" }
-Output: All terms in the category with definition previews
-```
+📖 **Endereço Derivado de Programa (PDA)**
 
----
+Um endereço de conta derivado deterministicamente de um ID de programa
+e um conjunto de seeds, sem necessidade de uma chave privada correspondente.
 
-### `explain_concept`
-
-Deep-dive into a concept by traversing its knowledge graph. Uses DFS to find related terms up to N levels deep, grouped by category.
-
-```
-Input:  { term: "validator", depth?: 3, locale?: "en" }
-Output: Root definition + related terms organized by category
+🏷️ Categoria: programming-model
+🌐 Idioma: Português
 ```
 
-**Why this matters:** An LLM can call this to build comprehensive context about any Solana topic, following cross-references through the graph instead of relying on generic training data.
-
----
-
-### `get_learning_path`
-
-Find the shortest learning path between two concepts using BFS on the relationship graph.
+### `suggest_terms` — Fuzzy matching
 
 ```
-Input:  { from: "pda", to: "cpi", locale?: "pt" }
-Output: Step-by-step progression from known concept to target
+Input:  { query: "valdator" }
 ```
 
-**Example output:**
 ```
-🛤️ **Learning Path: Program Derived Address (PDA) → Cross-Program Invocation (CPI)**
-📏 Distance: 2 steps
+💡 **Suggestions for "valdator"** (3 matches):
 
-🟢 Step 1 (start): Program Derived Address (PDA) [programming-model]
-   An account address derived deterministically...
-   ↓
-🔵 Step 2: invoke_signed [programming-model]
-   A function that allows a program to sign CPIs using a PDA...
-   ↓
-🎯 Step 3 (goal): Cross-Program Invocation (CPI) [programming-model]
-   Calling one program from another within a transaction...
+1. **Validator** (89% match)
+   A node that validates transactions and produces blocks...
+
+2. **Validator Client** (62% match)
+   Software that runs on validator hardware...
 ```
 
----
-
-### `compare_terms`
-
-Side-by-side comparison of 2-5 Solana terms. Shows definitions, categories, aliases, shared relationships, and category overlap analysis.
+### `semantic_search` — Natural language
 
 ```
-Input:  { terms: ["pda", "keypair", "pubkey"], locale?: "en" }
-Output: Side-by-side comparison with shared relationship analysis
+Input:  { query: "how does staking work on solana?" }
 ```
 
----
-
-### `random_term`
-
-Get random Solana terms for discovery, exploration, or quiz generation. Supports optional category filtering.
-
 ```
-Input:  { count?: 3, category?: "defi", locale?: "pt" }
-Output: Random terms with full details
+🧠 **Semantic Search Results** (5 matches):
+
+1. **Staking** [core-protocol] — 82% relevance
+2. **Stake Account** [core-protocol] — 71% relevance
+3. **Delegation** [core-protocol] — 65% relevance
 ```
 
-**Example output:**
-```
-🎲 **3 Random Terms** from _defi_:
-
-### Automated Market Maker (AMM)
-📖 A smart contract that provides liquidity by using mathematical formulas...
-🏷️ Category: defi
-🔤 Aliases: AMM
-🔗 Related: liquidity-pool, swap, slippage
-```
-
----
-
-## Resource Templates (with autocompletion)
-
-| Template | Description |
-|----------|-------------|
-| `solana-glossary://term/{termId}` | Dynamic term lookup, lists all 1001 terms, autocompletes term IDs |
-| `solana-glossary://{locale}/term/{termId}` | Localized term, autocompletes locales and term IDs |
-| `solana-glossary://{locale}/category/{category}` | Localized category, autocompletes locales and categories |
-
-### Static Resources
-
-| URI | Description |
-|-----|-------------|
-| `solana-glossary://glossary/full` | All 1001 terms (JSON) |
-| `solana-glossary://glossary/stats` | Term counts, category breakdown, relationship density |
-| `solana-glossary://category/{name}` | All terms in a category (one per category pre-registered) |
-
----
-
-## Prompts
-
-### `solana-context`
-
-Generate a system prompt with glossary context for a topic or category. Inject accurate Solana terminology into any LLM conversation.
+### `get_wallet_balance` — Live SOL balance
 
 ```
-Input:  { topic: "defi", locale?: "pt" }
-Output: System prompt with up to 30 relevant term definitions
+Input:  { address: "FhVd...2G8R" }
 ```
 
-### `explain-solana-code`
-
-Paste Solana code and get auto-detected glossary terms. The prompt identifies all Solana-specific concepts in the code and provides their definitions.
-
 ```
-Input:  { code: "const [pda, bump] = PublicKey.findProgramAddressSync(...)", locale?: "en" }
-Output: Code + all detected Solana terms with definitions
+💰 **Wallet Balance**
+  • Address: FhVd...2G8R
+  • SOL: 12.5000 ($2,125.00 @ $170.00/SOL)
+  • Lamports: 12,500,000,000
 ```
 
-### `solana-quiz`
-
-Generate interactive multiple-choice quizzes from glossary definitions. Great for testing Solana knowledge or building educational experiences.
+### `simulate_swap` — Jupiter swap simulation
 
 ```
-Input:  { category?: "core-protocol", count?: "5", locale?: "pt" }
-Output: Quiz with questions, answers, and expandable solutions
+Input:  { inputToken: "SOL", outputToken: "USDC", amount: 1 }
 ```
 
-**Example output:**
 ```
-## Question 1
+🔄 **Swap Simulation** (read-only, no execution)
+  • Input: 1 SOL
+  • Output: ~170.25 USDC
+  • Minimum received: 169.40 USDC
+  • Rate: 1 SOL = 170.25 USDC
+  • Price impact: 0.0012%
+  • Slippage: 0.50%
 
-> A cryptographic clock mechanism that provides a verifiable ordering of events...
+🗺️ **Route** (1 step):
+  100% → Raydium AMM
 
-Which term does this define?
-
-A) Proof of History (PoH)
-B) Tower BFT
-C) Leader Schedule
-D) Slot
-
-<details><summary>Answer</summary>
-✅ **A) Proof of History (PoH)** [core-protocol]
-</details>
+⚠️ This is a simulation only. No tokens were swapped.
 ```
 
 ---
@@ -276,38 +226,39 @@ D) Slot
 
 ```
 src/
-├── server.ts           # MCP server setup, tool/resource/prompt registration
-├── graph.ts            # BFS/DFS graph engine on term cross-references
-├── i18n-resolver.ts    # Locale resolution with caching
+├── server.ts                  # MCP server — wires 16 tools, resources, prompts
+├── graph.ts                   # BFS/DFS graph engine on term cross-references
+├── i18n-resolver.ts           # Locale resolution with caching
+├── utils/
+│   ├── config.ts              # RPC + Jupiter API config
+│   ├── format.ts              # SOL/USD formatters, address shortener
+│   └── fuzzy.ts               # Levenshtein + Dice coefficient engine
+├── services/
+│   ├── solana-rpc.ts          # @solana/web3.js wrapper (balance, tokens, TX)
+│   ├── jupiter.ts             # Jupiter Lite API (prices, swap quotes)
+│   └── embeddings.ts          # TF-IDF semantic search engine
+├── data/
+│   ├── known-programs.ts      # 24 known Solana program IDs
+│   └── glossary-index.ts      # Code examples + tag system
 ├── tools/
-│   ├── lookup.ts       # lookup_term
-│   ├── search.ts       # search_glossary
-│   ├── category.ts     # list_category
-│   ├── explain.ts      # explain_concept (DFS)
-│   ├── learning-path.ts # get_learning_path (BFS)
-│   ├── compare.ts      # compare_terms
-│   └── random.ts       # random_term
+│   ├── lookup.ts              # lookup_term (enhanced)
+│   ├── search.ts              # search_glossary
+│   ├── category.ts            # list_category
+│   ├── explain.ts             # explain_concept (DFS)
+│   ├── learning-path.ts       # get_learning_path (BFS)
+│   ├── compare.ts             # compare_terms
+│   ├── random.ts              # random_term
+│   ├── glossary/
+│   │   ├── suggest.ts         # suggest_terms (fuzzy)
+│   │   └── semantic-search.ts # semantic_search (TF-IDF)
+│   └── solana/
+│       ├── wallet.ts          # get_wallet_balance
+│       ├── tokens.ts          # get_token_balance + get_token_price
+│       ├── transactions.ts    # get_recent_transactions + explain_transaction
+│       ├── address-info.ts    # what_is_this_address
+│       └── swap.ts            # simulate_swap
 └── resources/
-    └── index.ts        # URI-based resource handlers
-```
-
-### Knowledge Graph
-
-The server builds an in-memory bidirectional adjacency list from all term cross-references at startup. This enables:
-
-- **DFS traversal** (`explain_concept`): Explore related concepts radiating outward from a root term
-- **BFS shortest path** (`get_learning_path`): Find the most direct conceptual path between any two terms
-- **Hub detection**: Identify the most-connected terms (e.g., "transaction", "account", "validator")
-
-At startup, the server logs graph statistics:
-```
-🧠 Solana Glossary MCP Server v1.0.0
-📚 1001 terms loaded
-📂 14 categories
-🔗 1200+ cross-references (avg degree: 2.4)
-⭐ Hub terms: Transaction (15), Account (12), Validator (10)
-🌐 Locales: en, pt, es
-🛠️ 7 tools, 16 resources, 3 resource templates, 3 prompts
+    └── index.ts               # URI-based resource handlers
 ```
 
 ---
@@ -318,12 +269,27 @@ At startup, the server logs graph statistics:
 npm test
 ```
 
-51 tests covering:
-- All 7 tools (valid input, error handling, i18n, edge cases)
+108 tests covering:
+- All 16 tools (valid input, error handling, i18n, edge cases)
+- Fuzzy search engine (Levenshtein, Dice, combined scoring)
+- TF-IDF semantic search (indexing, cosine similarity, ranking)
 - Graph engine (BFS, DFS, stats, hub detection)
 - i18n resolver (locale validation, caching, fallback)
 - Resources (all URI patterns, localized variants)
+- Format utilities, known programs, glossary index, Jupiter service, RPC service
 - SDK integration (term count, category count, schema validation)
+
+---
+
+## Environment Variables
+
+All services work with default values (no configuration required), but you can override:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOLANA_RPC_URL` | Helius mainnet | Solana RPC endpoint |
+| `JUPITER_API_KEY` | Included | Jupiter API key for authenticated endpoints |
+| `REQUEST_TIMEOUT_MS` | `10000` | HTTP request timeout |
 
 ---
 
@@ -345,6 +311,22 @@ npm run inspector
 # Run tests
 npm test
 ```
+
+---
+
+## Tech Stack
+
+| Technology | Role |
+|------------|------|
+| TypeScript | Primary language |
+| @modelcontextprotocol/sdk | Official MCP SDK (v1.12+) |
+| @stbr/solana-glossary | Glossary data layer (1001 terms) |
+| @solana/web3.js | Solana blockchain interaction |
+| Jupiter Lite API | Token prices and swap simulation |
+| Zod | Input validation |
+| tsup | Bundler (ESM) |
+| Vitest | Test framework (108 tests) |
+| Node.js 20+ | Runtime |
 
 ---
 
