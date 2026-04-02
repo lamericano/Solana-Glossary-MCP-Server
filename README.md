@@ -155,6 +155,39 @@ Terms without a translation automatically fall back to English.
 
 ---
 
+## MCP Server — Solana Intelligence v2.0
+
+The glossary ships with a full **MCP (Model Context Protocol) server** that turns it into an AI-powered Solana backend — not just a glossary, but a live intelligence layer.
+
+```bash
+cd examples/mcp-server
+npm install
+npm run dev
+```
+
+### 16 Tools for AI Copilots
+
+**Glossary Intelligence (9 tools):**
+`lookup_term` · `search_glossary` · `suggest_terms` · `semantic_search` · `list_category` · `explain_concept` · `get_learning_path` · `compare_terms` · `random_term`
+
+**Live Solana Data (7 tools):**
+`get_wallet_balance` · `get_token_balance` · `get_token_price` · `get_recent_transactions` · `explain_transaction` · `what_is_this_address` · `simulate_swap`
+
+### Key Features
+- **Semantic search** — Natural language queries via TF-IDF (zero external dependencies)
+- **Fuzzy matching** — Levenshtein + Dice coefficient for typo tolerance
+- **Live blockchain** — Balances, prices, transactions via Solana RPC + Jupiter API
+- **Address classification** — Identifies wallets, programs, token mints, 20+ known protocols
+- **Transaction analysis** — Parses instructions, identifies programs, shows balance changes
+- **Swap simulation** — Jupiter quotes with routing and price impact
+- **No API keys required** — Works out of the box with public endpoints
+
+Compatible with **Claude Code**, **Codex CLI**, **Cursor**, and any MCP client via STDIO transport.
+
+See [`examples/mcp-server/README.md`](examples/mcp-server/README.md) for full documentation.
+
+---
+
 ## Term Schema
 
 ```typescript
