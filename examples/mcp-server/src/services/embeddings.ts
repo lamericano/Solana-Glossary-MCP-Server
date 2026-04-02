@@ -1,143 +1,157 @@
 /**
- * Semantic Search Engine (TF-IDF based)
- * 
- * Zero-dependency local semantic search using TF-IDF vectors
- * and cosine similarity. No API keys needed.
- * 
- * Indexes all glossary terms at startup for instant search.
+ * TF-IDF Semantic Search Engine
+ *
+ * Zero-dependency implementation that indexes glossary terms
+ * and supports natural language queries.
  */
 
 import { allTerms, type GlossaryTerm } from "@stbr/solana-glossary";
 
 interface TermVector {
   termId: string;
-  vector: Map<string, number>;
+  tfidf: Map<string, number>;
   magnitude: number;
 }
 
-// Stopwords to filter out common terms
+// Stopwords to exclude from indexing
 const STOPWORDS = new Set([
-  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-  "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "shall", "can", "need", "dare", "ought",
-  "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-  "as", "into", "through", "during", "before", "after", "above", "below",
-  "between", "out", "off", "over", "under", "again", "further", "then",
-  "once", "that", "this", "these", "those", "each", "every", "all",
-  "both", "few", "more", "most", "other", "some", "such", "no", "nor",
-  "not", "only", "own", "same", "so", "than", "too", "very", "just",
-  "and", "but", "or", "if", "while", "because", "until", "although",
-  "it", "its", "they", "them", "their", "we", "our", "you", "your",
-  "he", "she", "his", "her", "which", "who", "whom", "what", "where",
-  "when", "how", "there", "here", "also", "about", "up",
+  "a", "an", "the", "is", "it", "in", "on", "of", "to", "for", "and", "or",
+  "that", "this", "with", "as", "by", "at", "from", "are", "was", "were",
+  "be", "been", "being", "have", "has", "had", "do", "does", "did", "will",
+  "would", "could", "should", "may", "might", "can", "which", "who", "what",
+  "when", "where", "how", "not", "no", "but", "if", "than", "then", "so",
+  "its", "they", "their", "them", "we", "us", "our", "you", "your",
+  "he", "she", "his", "her", "all", "each", "every", "both", "more",
+  "some", "any", "such", "only", "also", "very", "just", "about",
+  "up", "out", "into", "over", "after", "between", "through",
 ]);
 
-/** Tokenize text into normalized words */
+/** Tokenize and normalize a text string */
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\-]/g, " ")
+    .replace(/[^\w\s-]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length > 1 && !STOPWORDS.has(w));
+    .filter((w) => w.length > 1 && !STOPWORDS.has(w));
 }
 
-/** Calculate term frequency */
-function tf(tokens: string[]): Map<string, number> {
+/** Compute term frequency for a document */
+function termFrequency(tokens: string[]): Map<string, number> {
   const freq = new Map<string, number>();
   for (const token of tokens) {
     freq.set(token, (freq.get(token) ?? 0) + 1);
   }
   // Normalize by document length
-  const len = tokens.length || 1;
-  for (const [k, v] of freq) {
-    freq.set(k, v / len);
+  for (const [key, val] of freq) {
+    freq.set(key, val / tokens.length);
   }
   return freq;
 }
 
-/** Calculate vector magnitude */
-function magnitude(vec: Map<string, number>): number {
-  let sum = 0;
-  for (const v of vec.values()) {
-    sum += v * v;
+/** Build the search index (runs once at import time) */
+class TfIdfIndex {
+  private documents: TermVector[] = [];
+  private idf: Map<string, number> = new Map();
+  private docCount: number = 0;
+
+  constructor() {
+    this.buildIndex();
   }
-  return Math.sqrt(sum);
+
+  private buildIndex(): void {
+    const allTokenSets: Array<{ termId: string; tokens: string[] }> = [];
+    const docFreq = new Map<string, number>();
+
+    // Tokenize all documents
+    for (const term of allTerms) {
+      const text = [term.term, term.definition, ...(term.aliases ?? [])].join(" ");
+      const tokens = tokenize(text);
+      allTokenSets.push({ termId: term.id, tokens });
+
+      // Count document frequency
+      const uniqueTokens = new Set(tokens);
+      for (const token of uniqueTokens) {
+        docFreq.set(token, (docFreq.get(token) ?? 0) + 1);
+      }
+    }
+
+    this.docCount = allTokenSets.length;
+
+    // Compute IDF
+    for (const [token, df] of docFreq) {
+      this.idf.set(token, Math.log(this.docCount / (1 + df)));
+    }
+
+    // Compute TF-IDF vectors
+    for (const { termId, tokens } of allTokenSets) {
+      const tf = termFrequency(tokens);
+      const tfidf = new Map<string, number>();
+      let magnitude = 0;
+
+      for (const [token, tfVal] of tf) {
+        const idfVal = this.idf.get(token) ?? 0;
+        const score = tfVal * idfVal;
+        tfidf.set(token, score);
+        magnitude += score * score;
+      }
+
+      magnitude = Math.sqrt(magnitude);
+      this.documents.push({ termId, tfidf, magnitude });
+    }
+  }
+
+  /** Search with a natural language query, returns scored results */
+  search(query: string, limit = 10): Array<{ termId: string; score: number }> {
+    const queryTokens = tokenize(query);
+    if (queryTokens.length === 0) return [];
+
+    const queryTf = termFrequency(queryTokens);
+    const queryTfidf = new Map<string, number>();
+    let queryMagnitude = 0;
+
+    for (const [token, tfVal] of queryTf) {
+      const idfVal = this.idf.get(token) ?? Math.log(this.docCount);
+      const score = tfVal * idfVal;
+      queryTfidf.set(token, score);
+      queryMagnitude += score * score;
+    }
+    queryMagnitude = Math.sqrt(queryMagnitude);
+
+    if (queryMagnitude === 0) return [];
+
+    // Cosine similarity
+    const results: Array<{ termId: string; score: number }> = [];
+
+    for (const doc of this.documents) {
+      if (doc.magnitude === 0) continue;
+
+      let dotProduct = 0;
+      for (const [token, qScore] of queryTfidf) {
+        const dScore = doc.tfidf.get(token);
+        if (dScore !== undefined) {
+          dotProduct += qScore * dScore;
+        }
+      }
+
+      const similarity = dotProduct / (queryMagnitude * doc.magnitude);
+      if (similarity > 0.01) {
+        results.push({ termId: doc.termId, score: similarity });
+      }
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit);
+  }
 }
 
-/** Cosine similarity between two vectors */
-function cosineSimilarity(a: Map<string, number>, aMag: number, b: Map<string, number>, bMag: number): number {
-  if (aMag === 0 || bMag === 0) return 0;
+// Singleton index — built once at startup
+let _index: TfIdfIndex | null = null;
 
-  let dot = 0;
-  // Iterate over the smaller map for efficiency
-  const [smaller, larger] = a.size <= b.size ? [a, b] : [b, a];
-  for (const [key, val] of smaller) {
-    const otherVal = larger.get(key);
-    if (otherVal !== undefined) {
-      dot += val * otherVal;
-    }
+function getIndex(): TfIdfIndex {
+  if (!_index) {
+    _index = new TfIdfIndex();
   }
-
-  return dot / (aMag * bMag);
-}
-
-// ─── Index ────────────────────────────────────────────────
-
-let _index: TermVector[] | null = null;
-let _idf: Map<string, number> | null = null;
-let _indexed = false;
-
-/** Build the search index from all glossary terms */
-function buildIndex(): void {
-  if (_indexed) return;
-
-  const docCount = allTerms.length;
-  const docFreq = new Map<string, number>();
-  const rawDocs: Array<{ termId: string; tokens: string[] }> = [];
-
-  // Phase 1: Tokenize all documents and count document frequencies
-  for (const term of allTerms) {
-    const text = [
-      term.term,
-      term.term, // double-weight the term name
-      term.definition,
-      term.category.replace(/-/g, " "),
-      ...(term.aliases ?? []),
-    ].join(" ");
-
-    const tokens = tokenize(text);
-    rawDocs.push({ termId: term.id, tokens });
-
-    const uniqueTokens = new Set(tokens);
-    for (const t of uniqueTokens) {
-      docFreq.set(t, (docFreq.get(t) ?? 0) + 1);
-    }
-  }
-
-  // Phase 2: Calculate IDF
-  _idf = new Map<string, number>();
-  for (const [token, count] of docFreq) {
-    _idf.set(token, Math.log(docCount / (count + 1)) + 1);
-  }
-
-  // Phase 3: Build TF-IDF vectors
-  _index = rawDocs.map(({ termId, tokens }) => {
-    const termFreq = tf(tokens);
-    const vector = new Map<string, number>();
-
-    for (const [token, tfVal] of termFreq) {
-      const idfVal = _idf!.get(token) ?? 1;
-      vector.set(token, tfVal * idfVal);
-    }
-
-    return {
-      termId,
-      vector,
-      magnitude: magnitude(vector),
-    };
-  });
-
-  _indexed = true;
+  return _index;
 }
 
 export interface SemanticResult {
@@ -146,62 +160,20 @@ export interface SemanticResult {
 }
 
 /**
- * Semantic search across the glossary.
- * 
- * @param query - Natural language query
- * @param limit - Max results (default 10)
- * @param threshold - Min similarity score (default 0.05)
+ * Semantic search across the glossary using TF-IDF + cosine similarity.
+ * Accepts natural language queries like "how does staking work on solana?"
  */
-export function semanticSearch(
-  query: string,
-  limit = 10,
-  threshold = 0.05
-): SemanticResult[] {
-  buildIndex();
+export function semanticSearch(query: string, limit = 10): SemanticResult[] {
+  const index = getIndex();
+  const results = index.search(query, limit);
 
-  // Build query vector
-  const queryTokens = tokenize(query);
-  if (queryTokens.length === 0) return [];
+  const termMap = new Map(allTerms.map((t) => [t.id, t]));
 
-  const queryTf = tf(queryTokens);
-  const queryVector = new Map<string, number>();
-
-  for (const [token, tfVal] of queryTf) {
-    const idfVal = _idf!.get(token) ?? 1;
-    queryVector.set(token, tfVal * idfVal);
-  }
-
-  const queryMag = magnitude(queryVector);
-  if (queryMag === 0) return [];
-
-  // Score all documents
-  const results: SemanticResult[] = [];
-  const termMap = new Map(allTerms.map(t => [t.id, t]));
-
-  for (const doc of _index!) {
-    const score = cosineSimilarity(queryVector, queryMag, doc.vector, doc.magnitude);
-    if (score >= threshold) {
-      const term = termMap.get(doc.termId);
-      if (term) {
-        results.push({ term, score });
-      }
-    }
-  }
-
-  // Sort by score descending
-  results.sort((a, b) => b.score - a.score);
-
-  return results.slice(0, limit);
-}
-
-/**
- * Get the total number of indexed terms
- */
-export function getIndexStats(): { totalTerms: number; totalTokens: number; indexed: boolean } {
-  buildIndex();
-  return {
-    totalTerms: _index!.length,
-    totalTokens: _idf!.size,
-    indexed: _indexed,
-  };
+  return results
+    .map((r) => {
+      const term = termMap.get(r.termId);
+      if (!term) return null;
+      return { term, score: r.score };
+    })
+    .filter((r): r is SemanticResult => r !== null);
 }

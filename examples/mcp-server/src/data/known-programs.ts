@@ -1,142 +1,61 @@
 /**
- * Known Solana Programs Database
- * 
- * Maps well-known program IDs to human-readable names and descriptions.
- * Used by what_is_this_address and explain_transaction tools.
+ * Known Solana Programs Registry
+ *
+ * 20+ well-known program IDs with human-readable descriptions.
+ * Used by address classification and transaction explanation tools.
  */
 
 export interface KnownProgram {
+  address: string;
   name: string;
   description: string;
-  category: "system" | "defi" | "nft" | "token" | "governance" | "oracle" | "infra";
-  url?: string;
+  category: "system" | "spl" | "defi" | "nft" | "infrastructure" | "governance";
 }
 
-export const KNOWN_PROGRAMS: Record<string, KnownProgram> = {
-  // System programs
-  "11111111111111111111111111111111": {
-    name: "System Program",
-    description: "Native Solana program for creating accounts, transferring SOL, and allocating account data.",
-    category: "system",
-  },
-  "TokenkegQfeN2oAHczjsxq1Fv7KNGo5UKeYTfYC9qHq": {
-    name: "Token Program",
-    description: "SPL Token Program — manages fungible and non-fungible token operations (mint, transfer, burn).",
-    category: "token",
-  },
-  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb": {
-    name: "Token-2022 Program",
-    description: "SPL Token Extensions Program — advanced token features including transfer fees, confidential transfers, and metadata.",
-    category: "token",
-  },
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL": {
-    name: "Associated Token Account Program",
-    description: "Derives and creates deterministic token accounts for a given wallet and mint combination.",
-    category: "token",
-  },
-  "ComputeBudget111111111111111111111111111111": {
-    name: "Compute Budget Program",
-    description: "Set compute unit limits and priority fees for transactions.",
-    category: "system",
-  },
-  "Vote111111111111111111111111111111111111111": {
-    name: "Vote Program",
-    description: "Manages validator vote accounts used for consensus and staking.",
-    category: "system",
-  },
-  "Stake11111111111111111111111111111111111111": {
-    name: "Stake Program",
-    description: "Manages stake accounts — delegation, deactivation, and withdrawal of staked SOL.",
-    category: "system",
-  },
-  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr": {
-    name: "Memo Program v2",
-    description: "Attach arbitrary text memos to Solana transactions.",
-    category: "system",
-  },
-  "AddressLookupTab1e1111111111111111111111111": {
-    name: "Address Lookup Table Program",
-    description: "Manages address lookup tables for transaction size optimization (versioned transactions).",
-    category: "system",
-  },
+export const KNOWN_PROGRAMS: KnownProgram[] = [
+  // System Programs
+  { address: "11111111111111111111111111111111", name: "System Program", description: "Native program for creating accounts, transferring SOL, and allocating space", category: "system" },
+  { address: "Vote111111111111111111111111111111111111111", name: "Vote Program", description: "Manages validator vote accounts and voting", category: "system" },
+  { address: "Stake11111111111111111111111111111111111111", name: "Stake Program", description: "Manages stake accounts and delegation", category: "system" },
+  { address: "Config1111111111111111111111111111111111111", name: "Config Program", description: "Stores configuration data on-chain", category: "system" },
+  { address: "BPFLoaderUpgradeab1e11111111111111111111111", name: "BPF Upgradeable Loader", description: "Deploys and upgrades on-chain programs", category: "system" },
+  { address: "ComputeBudget111111111111111111111111111111", name: "Compute Budget Program", description: "Sets compute unit limits and priority fees", category: "system" },
+  { address: "AddressLookupTab1e1111111111111111111111111", name: "Address Lookup Table Program", description: "Manages address lookup tables for versioned transactions", category: "system" },
 
-  // DeFi programs
-  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4": {
-    name: "Jupiter Aggregator v6",
-    description: "Jupiter swap aggregator — finds the best swap route across all Solana DEXes.",
-    category: "defi",
-    url: "https://jup.ag",
-  },
-  "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc": {
-    name: "Orca Whirlpools",
-    description: "Orca concentrated liquidity AMM — provides efficient token swaps and LP positions.",
-    category: "defi",
-    url: "https://orca.so",
-  },
-  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8": {
-    name: "Raydium AMM",
-    description: "Raydium AMM — hybrid AMM using Serum's central limit order book for liquidity.",
-    category: "defi",
-    url: "https://raydium.io",
-  },
-  "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK": {
-    name: "Raydium CLMM",
-    description: "Raydium Concentrated Liquidity Market Maker (CLMM) program.",
-    category: "defi",
-    url: "https://raydium.io",
-  },
-  "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA": {
-    name: "Marginfi",
-    description: "Marginfi lending protocol — deposit, borrow, and earn yield on Solana assets.",
-    category: "defi",
-    url: "https://marginfi.com",
-  },
-  "jCebN34bUfdeUhJEkZxbFE1KZjBN1iUXS1JkGKr2TRH": {
-    name: "Jito Stake Pool",
-    description: "Jito liquid staking — stake SOL and receive JitoSOL with MEV rewards.",
-    category: "defi",
-    url: "https://jito.network",
-  },
-  "DjVE6JNiYqPL2QXyCUUh8rNjHrbz9hXHNYt99MQ59qw1": {
-    name: "Orca Token Swap",
-    description: "Orca legacy constant-product AMM for token swaps.",
-    category: "defi",
-  },
+  // SPL Programs
+  { address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", name: "Token Program", description: "SPL Token program — create and manage fungible tokens", category: "spl" },
+  { address: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", name: "Token-2022 Program", description: "SPL Token Extensions with transfer hooks, confidential transfers, and more", category: "spl" },
+  { address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", name: "Associated Token Account Program", description: "Creates and manages associated token accounts (ATAs)", category: "spl" },
+  { address: "namesLPneVptA9Z5rqUDD9tMTWEJwofgaYwp8cawRkX", name: "Name Service Program", description: "Solana Name Service (.sol domains)", category: "spl" },
+  { address: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr", name: "Memo Program v2", description: "Attaches memo data to transactions", category: "spl" },
 
-  // NFT programs
-  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s": {
-    name: "Metaplex Token Metadata",
-    description: "Metaplex Token Metadata program — attach metadata (name, symbol, URI) to SPL tokens.",
-    category: "nft",
-    url: "https://metaplex.com",
-  },
-  "CndyV3LdqHUfDLmE5naZjVN8rBZz4tqhdefbAnjHG3JR": {
-    name: "Candy Machine v3",
-    description: "Metaplex Candy Machine — NFT minting machine with guards and configurable mint rules.",
-    category: "nft",
-  },
+  // DeFi Programs
+  { address: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", name: "Jupiter v6", description: "Jupiter aggregator — DEX routing and swap optimization", category: "defi" },
+  { address: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", name: "Raydium AMM", description: "Raydium automated market maker for token swaps", category: "defi" },
+  { address: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", name: "Orca Whirlpools", description: "Orca concentrated liquidity DEX", category: "defi" },
+  { address: "MERLuDFBMmsHnsBPZw2sDQZHvXFMwp8EdjudcU2HKky", name: "Marinade Finance", description: "Liquid staking protocol (mSOL)", category: "defi" },
+  { address: "DjVE6JNiYqPL2QXyCUUh8rNjHrbz9hXHNYt99MQ59qw1", name: "Orca Legacy", description: "Orca legacy token swap program", category: "defi" },
+  { address: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", name: "Serum DEX v3", description: "Serum central limit order book DEX", category: "defi" },
 
-  // Oracle programs
-  "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH": {
-    name: "Pyth Oracle",
-    description: "Pyth Network oracle — provides real-time price feeds for crypto, equities, and commodities.",
-    category: "oracle",
-    url: "https://pyth.network",
-  },
-  "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f": {
-    name: "Switchboard Oracle",
-    description: "Switchboard oracle network — decentralized, permissionless oracle feeds.",
-    category: "oracle",
-    url: "https://switchboard.xyz",
-  },
-};
+  // NFT Programs
+  { address: "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s", name: "Metaplex Token Metadata", description: "NFT metadata standard — defines name, symbol, URI for tokens", category: "nft" },
+  { address: "auth9SigNpDKz4sJJ1DfCTuZrZNSAgh9sFD3rboVmgg", name: "Metaplex Authorization", description: "Metaplex authorization rules for programmable NFTs", category: "nft" },
+  { address: "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK", name: "Bubblegum (cNFTs)", description: "Metaplex compressed NFT program using state compression", category: "nft" },
 
-/** Look up a known program by its ID */
-export function getKnownProgram(programId: string): KnownProgram | null {
-  return KNOWN_PROGRAMS[programId] ?? null;
+  // Infrastructure
+  { address: "FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH", name: "Pyth Oracle", description: "Pyth Network price oracle — real-time market data feeds", category: "infrastructure" },
+  { address: "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f", name: "Switchboard Oracle", description: "Switchboard decentralized oracle network", category: "infrastructure" },
+  { address: "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth", name: "Wormhole", description: "Wormhole cross-chain bridge protocol", category: "infrastructure" },
+];
+
+const programMap = new Map(KNOWN_PROGRAMS.map((p) => [p.address, p]));
+
+/** Look up a known program by address */
+export function identifyProgram(address: string): KnownProgram | undefined {
+  return programMap.get(address);
 }
 
-/** Get all known programs */
-export function getAllKnownPrograms(): Array<{ id: string } & KnownProgram> {
-  return Object.entries(KNOWN_PROGRAMS).map(([id, program]) => ({ id, ...program }));
+/** Check if an address is a known program */
+export function isKnownProgram(address: string): boolean {
+  return programMap.has(address);
 }

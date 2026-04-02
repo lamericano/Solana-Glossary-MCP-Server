@@ -1,66 +1,40 @@
 /**
- * semantic_search — Natural language search over the glossary
- * 
- * Uses TF-IDF embeddings with cosine similarity to find
- * conceptually relevant terms from natural language queries.
+ * semantic_search — Natural language search using TF-IDF
  */
 
 import { z } from "zod";
-import { semanticSearch as search, getIndexStats } from "../../services/embeddings.js";
-import { localizeTerms, validateLocale } from "../../i18n-resolver.js";
-import { getTermExample } from "../../data/glossary-index.js";
+import { semanticSearch } from "../../services/embeddings.js";
 
 export const semanticSearchSchema = z.object({
-  query: z.string().describe("Natural language query (e.g., 'how does Solana achieve fast consensus?' or 'token swap mechanism')"),
-  limit: z.number().min(1).max(30).optional().describe("Max results (default: 10)"),
-  locale: z.enum(["en", "pt", "es"]).optional().describe("Language for results. Defaults to 'en'."),
+  query: z.string().describe("Natural language question or topic (e.g., 'how does staking work on solana?', 'what is the difference between PDAs and keypairs?')"),
+  limit: z.number().min(1).max(20).optional().describe("Maximum number of results (default: 8, max: 20)"),
 });
 
 export type SemanticSearchInput = z.infer<typeof semanticSearchSchema>;
 
 export function semanticSearchTool(input: SemanticSearchInput): string {
-  const locale = validateLocale(input.locale);
-  const limit = input.limit ?? 10;
-
-  const results = search(input.query, limit);
+  const limit = input.limit ?? 8;
+  const results = semanticSearch(input.query, limit);
 
   if (results.length === 0) {
-    return [
-      `🧠 No semantically relevant terms found for "${input.query}".`,
-      ``,
-      `Try:`,
-      `• Rephrase with different keywords`,
-      `• Use 'search_glossary' for exact text matching`,
-      `• Use 'suggest_terms' for fuzzy spelling matches`,
-    ].join("\n");
+    return `🧠 No semantic matches found for "${input.query}".\n\nTip: Try rephrasing or use 'search_glossary' for keyword matching.`;
   }
 
-  const terms = localizeTerms(results.map(r => r.term), locale);
-
   const lines = [
-    `🧠 **Semantic Search: "${input.query}"**`,
-    `📊 ${results.length} relevant terms (ranked by similarity):`,
+    `🧠 **Semantic Search Results** for "${input.query}" (${results.length} matches):`,
     ``,
   ];
 
-  for (let i = 0; i < terms.length; i++) {
-    const t = terms[i];
-    const score = (results[i].score * 100).toFixed(1);
-    const defPreview = t.definition.substring(0, 120) + (t.definition.length > 120 ? "…" : "");
-
-    lines.push(`${i + 1}. **${t.term}** — ${score}% relevant [${t.category}]`);
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const relevance = Math.round(r.score * 100);
+    const defPreview = r.term.definition.substring(0, 120) + (r.term.definition.length > 120 ? "…" : "");
+    lines.push(`${i + 1}. **${r.term.term}** [${r.term.category}] — ${relevance}% relevance`);
     lines.push(`   ${defPreview}`);
-
-    const example = getTermExample(t.id);
-    if (example) {
-      lines.push(`   🏷️ ${example.tags.join(", ")}`);
-    }
     lines.push(``);
   }
 
-  const stats = getIndexStats();
-  lines.push(`---`);
-  lines.push(`_Searched across ${stats.totalTerms} indexed terms (${stats.totalTokens} unique tokens)._`);
+  lines.push(`_Results ranked by TF-IDF cosine similarity. Use 'lookup_term' for full details._`);
 
   return lines.join("\n");
 }

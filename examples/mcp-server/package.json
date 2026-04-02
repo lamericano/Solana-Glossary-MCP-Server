@@ -1,7 +1,7 @@
 {
   "name": "@stbr/solana-glossary-mcp",
   "version": "2.0.0",
-  "description": "Solana Intelligence MCP Server — glossary, live blockchain data, semantic search, transaction analysis, and swap simulation for AI copilots.",
+  "description": "Solana Intelligence MCP Server — 16 tools for glossary, live blockchain, DeFi, and semantic search.",
   "type": "module",
   "main": "dist/server.js",
   "bin": {
@@ -18,7 +18,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@solana/web3.js": "^1.98.4",
-    "@stbr/solana-glossary": "file:../../"
+    "@stbr/solana-glossary": "file:.."
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -36,5 +36,9 @@
     "llm",
     "web3"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lamericano/Solana-Glossary-MCP-Server"
+  }
 }

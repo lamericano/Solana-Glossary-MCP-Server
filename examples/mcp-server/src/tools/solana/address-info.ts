@@ -1,133 +1,83 @@
 /**
  * what_is_this_address — Intelligent address classification
- * 
- * Determines if an address is a wallet, program, token mint,
- * token account, or known protocol. Provides rich context.
+ *
+ * Determines whether a Solana address is a wallet, program, token mint,
+ * token account, stake account, or vote account, with contextual details.
  */
 
 import { z } from "zod";
-import { classifyAccount, isValidAddress } from "../../services/solana-rpc.js";
-import { getKnownProgram, getAllKnownPrograms } from "../../data/known-programs.js";
-import { KNOWN_TOKENS } from "../../services/jupiter.js";
-import { formatSol, shortenAddress } from "../../utils/format.js";
+import { classifyAddress, isValidAddress } from "../../services/solana-rpc.js";
+import { shortenAddress } from "../../utils/format.js";
 
-export const addressInfoSchema = z.object({
-  address: z.string().describe("Solana address to identify and classify (base58 encoded)"),
+export const whatIsThisAddressSchema = z.object({
+  address: z.string().describe("Solana address (base58 public key) to classify and analyze"),
 });
 
-export type AddressInfoInput = z.infer<typeof addressInfoSchema>;
+export type WhatIsThisAddressInput = z.infer<typeof whatIsThisAddressSchema>;
 
-export async function addressInfo(input: AddressInfoInput): Promise<string> {
+export async function whatIsThisAddressTool(input: WhatIsThisAddressInput): Promise<string> {
   if (!isValidAddress(input.address)) {
-    return `❌ Invalid Solana address: "${input.address}".`;
+    return `❌ Invalid Solana address: "${input.address}"\n\nA valid Solana address is a base58-encoded string of 32-44 characters.`;
   }
 
   try {
-    // Check known programs first (no RPC needed)
-    const knownProgram = getKnownProgram(input.address);
-    if (knownProgram) {
-      return [
-        `🏗️ **Known Program Identified**`,
-        ``,
-        `📍 Address: \`${input.address}\``,
-        `📛 Name: **${knownProgram.name}**`,
-        `📝 ${knownProgram.description}`,
-        `🏷️ Category: ${knownProgram.category}`,
-        knownProgram.url ? `🔗 Website: ${knownProgram.url}` : "",
-      ].filter(Boolean).join("\n");
-    }
+    const classification = await classifyAddress(input.address);
 
-    // Check known token mints
-    for (const [symbol, data] of Object.entries(KNOWN_TOKENS)) {
-      if (data.mint === input.address) {
-        return [
-          `🪙 **Known Token Mint**`,
-          ``,
-          `📍 Address: \`${input.address}\``,
-          `📛 Token: **${data.name} (${symbol})**`,
-          `🔢 Decimals: ${data.decimals}`,
-          ``,
-          `_Use 'get_token_price' to check the current price._`,
-        ].join("\n");
-      }
-    }
-
-    // Classify via RPC
-    const info = await classifyAccount(input.address);
-
-    const typeLabels: Record<string, string> = {
-      wallet: "👛 Wallet (System Account)",
-      program: "🏗️ Program (Smart Contract)",
-      "token-mint": "🪙 Token Mint",
-      "token-account": "💳 Token Account",
-      unknown: "❓ Unknown / Empty Account",
+    const typeEmoji: Record<string, string> = {
+      "known-program": "🏛️",
+      "executable": "⚙️",
+      "token-mint": "🪙",
+      "token-account": "💳",
+      "stake-account": "🥩",
+      "vote-account": "🗳️",
+      "wallet": "👛",
+      "system": "🖥️",
+      "unknown": "❓",
     };
 
+    const emoji = typeEmoji[classification.type] ?? "❓";
+
     const lines = [
-      `🔎 **Address Classification**`,
+      `${emoji} **${classification.label}**`,
       ``,
-      `📍 Address: \`${input.address}\``,
-      `📋 Type: **${typeLabels[info.type] ?? info.type}**`,
-      `💎 SOL Balance: ${formatSol(info.lamports)}`,
+      `  • **Address:** \`${input.address}\``,
+      `  • **Type:** ${classification.type}`,
     ];
 
-    if (info.owner) {
-      const ownerProgram = getKnownProgram(info.owner);
-      lines.push(`👤 Owner: ${ownerProgram ? `**${ownerProgram.name}**` : `\`${shortenAddress(info.owner)}\``}`);
-    }
-
-    if (info.dataSize > 0) {
-      lines.push(`📦 Data Size: ${info.dataSize.toLocaleString()} bytes`);
-    }
-
-    if (info.executable) {
-      lines.push(`⚡ Executable: Yes (this is a deployed program)`);
-    }
-
-    // Type-specific details
-    if (info.details) {
-      lines.push(``, `📊 **Details:**`);
-
-      if (info.type === "token-mint") {
-        if (info.details.decimals !== undefined) lines.push(`  Decimals: ${info.details.decimals}`);
-        if (info.details.supply) lines.push(`  Supply: ${info.details.supply}`);
-        if (info.details.mintAuthority) lines.push(`  Mint Authority: \`${shortenAddress(info.details.mintAuthority)}\``);
-        if (info.details.freezeAuthority) lines.push(`  Freeze Authority: \`${shortenAddress(info.details.freezeAuthority)}\``);
-      }
-
-      if (info.type === "token-account") {
-        if (info.details.mint) lines.push(`  Mint: \`${shortenAddress(info.details.mint)}\``);
-        if (info.details.owner) lines.push(`  Owner: \`${shortenAddress(info.details.owner)}\``);
-        if (info.details.amount) lines.push(`  Balance: ${info.details.amount}`);
+    // Add contextual details
+    const details = classification.details;
+    for (const [key, value] of Object.entries(details)) {
+      if (value !== null && value !== undefined) {
+        const displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+        lines.push(`  • **${key}:** ${displayValue}`);
       }
     }
 
-    // Suggestions based on type
-    lines.push(``, `💡 **Next Steps:**`);
-    switch (info.type) {
+    // Add helpful suggestions based on type
+    lines.push(``);
+    switch (classification.type) {
       case "wallet":
-        lines.push(`• Use 'get_wallet_balance' for detailed balance info`);
-        lines.push(`• Use 'get_token_balance' to see token holdings`);
-        lines.push(`• Use 'get_recent_transactions' for activity`);
-        break;
-      case "program":
-        lines.push(`• This is a deployed Solana program`);
-        lines.push(`• Use glossary tools to learn about Solana programs`);
+        lines.push(`💡 _Try 'get_wallet_balance' for SOL balance or 'get_token_balance' for token holdings._`);
         break;
       case "token-mint":
-        lines.push(`• Use 'get_token_price' with the mint address for pricing`);
+        lines.push(`💡 _Try 'get_token_price' with this mint address for current price._`);
         break;
-      case "token-account":
-        lines.push(`• This account holds tokens for a specific wallet`);
-        lines.push(`• Check the owner field to find the parent wallet`);
+      case "known-program":
+      case "executable":
+        lines.push(`💡 _This is a program (smart contract). Use 'lookup_term' to learn more about Solana programs._`);
+        break;
+      case "stake-account":
+        lines.push(`💡 _Use 'lookup_term staking' to learn about how Solana staking works._`);
+        break;
+      case "vote-account":
+        lines.push(`💡 _This is a validator's vote account. Use 'lookup_term validator' to learn more._`);
         break;
       default:
-        lines.push(`• Account may be new, closed, or uninitialized`);
-        break;
+        lines.push(`💡 _Use 'get_recent_transactions' to see activity on this address._`);
     }
 
     return lines.join("\n");
-  } catch (err: any) {
-    return `❌ Failed to classify address: ${err.message ?? "RPC error"}`;
+  } catch (error) {
+    return `❌ Error classifying address: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 }

@@ -1,35 +1,45 @@
 /**
- * Fuzzy Matching Engine
- * 
- * Lightweight fuzzy search with scoring for glossary term matching.
- * No external dependencies — uses Levenshtein distance and bigram similarity.
+ * Fuzzy Search Engine
+ *
+ * Levenshtein distance + Dice coefficient (bigram similarity)
+ * for typo-tolerant term matching against the glossary.
  */
 
-/** Calculate Levenshtein distance between two strings */
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+import { allTerms, type GlossaryTerm } from "@stbr/solana-glossary";
 
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
+/** Levenshtein edit distance between two strings */
+export function levenshtein(a: string, b: string): number {
+  const la = a.length;
+  const lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
 
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= la; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= lb; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= la; i++) {
+    for (let j = 1; j <= lb; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,      // deletion
+        matrix[i][j - 1] + 1,      // insertion
+        matrix[i - 1][j - 1] + cost // substitution
       );
     }
   }
 
-  return dp[m][n];
+  return matrix[la][lb];
 }
 
-/** Generate character bigrams from a string */
-function bigrams(s: string): Set<string> {
+/** Extract bigrams from a string */
+function bigrams(str: string): Set<string> {
+  const s = str.toLowerCase();
   const result = new Set<string>();
   for (let i = 0; i < s.length - 1; i++) {
     result.add(s.substring(i, i + 2));
@@ -37,100 +47,89 @@ function bigrams(s: string): Set<string> {
   return result;
 }
 
-/** Dice coefficient for bigram similarity (0-1) */
-function diceCoefficient(a: string, b: string): number {
-  if (a.length < 2 || b.length < 2) return 0;
+/** Dice coefficient (bigram similarity) — 0..1, higher = more similar */
+export function diceCoefficient(a: string, b: string): number {
+  if (a.length < 2 || b.length < 2) {
+    return a.toLowerCase() === b.toLowerCase() ? 1 : 0;
+  }
   const bigramsA = bigrams(a);
   const bigramsB = bigrams(b);
+
   let intersection = 0;
   for (const bg of bigramsA) {
     if (bigramsB.has(bg)) intersection++;
   }
+
   return (2 * intersection) / (bigramsA.size + bigramsB.size);
 }
 
-export interface FuzzyMatch<T> {
-  item: T;
-  score: number; // 0-1, higher is better
-  matchType: "exact" | "prefix" | "contains" | "fuzzy";
+/** Combined fuzzy score — higher = better match (0..1) */
+export function fuzzyScore(query: string, target: string): number {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+
+  // Exact match
+  if (q === t) return 1;
+
+  // Prefix match bonus
+  const prefixBonus = t.startsWith(q) ? 0.3 : 0;
+
+  // Contains bonus
+  const containsBonus = t.includes(q) ? 0.2 : 0;
+
+  // Levenshtein (normalized — 0..1 where 1 = identical)
+  const maxLen = Math.max(q.length, t.length);
+  const levScore = maxLen > 0 ? 1 - levenshtein(q, t) / maxLen : 0;
+
+  // Dice coefficient
+  const dice = diceCoefficient(q, t);
+
+  // Weighted combination
+  return Math.min(1, levScore * 0.4 + dice * 0.3 + prefixBonus + containsBonus);
 }
 
-export interface FuzzySearchOptions {
-  /** Minimum score to include in results (0-1) */
-  threshold?: number;
-  /** Maximum number of results */
-  limit?: number;
+export interface FuzzyResult {
+  term: GlossaryTerm;
+  score: number;
+  matchedOn: string; // which field matched best
 }
 
 /**
- * Fuzzy search over a list of items.
- * 
- * @param query - The search query
- * @param items - Items to search
- * @param getFields - Function to extract searchable text fields from an item
- * @param options - Search configuration
+ * Fuzzy search across all glossary terms.
+ * Matches against term name, ID, and aliases.
  */
-export function fuzzySearch<T>(
-  query: string,
-  items: T[],
-  getFields: (item: T) => string[],
-  options: FuzzySearchOptions = {}
-): FuzzyMatch<T>[] {
-  const { threshold = 0.3, limit = 20 } = options;
-  const q = query.toLowerCase().trim();
+export function fuzzySearch(query: string, limit = 10, minScore = 0.3): FuzzyResult[] {
+  const results: FuzzyResult[] = [];
 
-  if (q.length === 0) return [];
-
-  const results: FuzzyMatch<T>[] = [];
-
-  for (const item of items) {
-    const fields = getFields(item).map(f => f.toLowerCase());
+  for (const term of allTerms) {
     let bestScore = 0;
-    let bestType: FuzzyMatch<T>["matchType"] = "fuzzy";
+    let matchedOn = "term";
 
-    for (const field of fields) {
-      // Exact match
-      if (field === q) {
-        bestScore = 1.0;
-        bestType = "exact";
-        break;
-      }
+    // Score against term name
+    const nameScore = fuzzyScore(query, term.term);
+    if (nameScore > bestScore) {
+      bestScore = nameScore;
+      matchedOn = "term";
+    }
 
-      // Prefix match
-      if (field.startsWith(q)) {
-        const score = 0.9 * (q.length / field.length);
-        if (score > bestScore) {
-          bestScore = Math.max(score, 0.7); // Prefix always scores at least 0.7
-          bestType = "prefix";
-        }
-        continue;
-      }
+    // Score against ID
+    const idScore = fuzzyScore(query, term.id);
+    if (idScore > bestScore) {
+      bestScore = idScore;
+      matchedOn = "id";
+    }
 
-      // Contains match
-      if (field.includes(q)) {
-        const score = 0.6 * (q.length / field.length);
-        if (score > bestScore) {
-          bestScore = Math.max(score, 0.5);
-          bestType = "contains";
-        }
-        continue;
-      }
-
-      // Fuzzy match (Levenshtein + Dice)
-      const maxLen = Math.max(q.length, field.length);
-      const levDist = levenshtein(q, field.substring(0, q.length + 5)); // Compare only relevant portion
-      const levScore = 1 - levDist / maxLen;
-      const diceScore = diceCoefficient(q, field);
-      const fuzzyScore = (levScore * 0.6 + diceScore * 0.4);
-
-      if (fuzzyScore > bestScore) {
-        bestScore = fuzzyScore;
-        bestType = "fuzzy";
+    // Score against aliases
+    for (const alias of term.aliases ?? []) {
+      const aliasScore = fuzzyScore(query, alias);
+      if (aliasScore > bestScore) {
+        bestScore = aliasScore;
+        matchedOn = `alias:${alias}`;
       }
     }
 
-    if (bestScore >= threshold) {
-      results.push({ item, score: bestScore, matchType: bestType });
+    if (bestScore >= minScore) {
+      results.push({ term, score: bestScore, matchedOn });
     }
   }
 

@@ -1,57 +1,47 @@
 /**
- * LLM-Optimized Formatters
- * 
- * Produces structured, concise responses that LLMs can parse
- * and relay to users effectively. Avoids noise and verbosity.
+ * Formatting Utilities
+ *
+ * SOL/USD formatting, address shortening, and LLM-friendly response builders.
  */
 
-/** Format SOL amount from lamports */
+const LAMPORTS_PER_SOL = 1_000_000_000;
+
+/** Convert lamports to SOL with up to 4 decimal places */
 export function formatSol(lamports: number): string {
-  return (lamports / 1e9).toFixed(9).replace(/\.?0+$/, "") + " SOL";
+  const sol = lamports / LAMPORTS_PER_SOL;
+  return sol.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
 }
 
-/** Format USD price */
+/** Format a number as USD */
 export function formatUsd(amount: number): string {
-  if (amount >= 1) return "$" + amount.toFixed(2);
-  if (amount >= 0.01) return "$" + amount.toFixed(4);
-  return "$" + amount.toFixed(8);
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-/** Format large numbers with abbreviations */
-export function formatNumber(n: number): string {
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return n.toFixed(n % 1 === 0 ? 0 : 2);
-}
-
-/** Shorten a Solana address for display */
+/** Shorten a Solana address: ABC...XYZ */
 export function shortenAddress(address: string, chars = 4): string {
   if (address.length <= chars * 2 + 3) return address;
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 }
 
-/** Format a Unix timestamp to readable date */
+/** Format a timestamp (unix seconds) to human-readable */
 export function formatTimestamp(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  return new Date(unixSeconds * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
 }
 
-/** Build a structured text response for LLMs */
-export function buildResponse(sections: Array<{ label: string; value: string }>): string {
-  return sections
-    .filter(s => s.value.length > 0)
-    .map(s => `**${s.label}:** ${s.value}`)
-    .join("\n");
+/** Build a structured LLM response section */
+export function section(title: string, emoji: string, lines: string[]): string {
+  return [`${emoji} **${title}**`, "", ...lines].join("\n");
 }
 
-/** Build a compact list response */
-export function buildList(title: string, items: string[]): string {
-  if (items.length === 0) return `${title}: (none)`;
-  return `${title}:\n${items.map(i => `  • ${i}`).join("\n")}`;
-}
-
-/** Truncate text to max length with ellipsis */
-export function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.substring(0, maxLen - 1) + "…";
+/** Build a key-value pair line */
+export function kv(key: string, value: string | number): string {
+  return `  • **${key}:** ${value}`;
 }

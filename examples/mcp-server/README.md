@@ -1,181 +1,335 @@
-# Solana Intelligence MCP Server v2.0.0
+# Solana Intelligence MCP Server
 
-A comprehensive MCP server that transforms the Solana Glossary into a full AI-powered Solana backend. Provides glossary intelligence, live blockchain data, semantic search, transaction analysis, and swap simulation — all accessible from Claude Code, Codex CLI, Cursor, and any MCP client.
+[![MCP](https://img.shields.io/badge/MCP-2.0-blueviolet)](https://modelcontextprotocol.io)
+[![Terms](https://img.shields.io/badge/terms-1001-brightgreen)](https://github.com/solanabr/solana-glossary)
+[![Tools](https://img.shields.io/badge/tools-16-blue)](./)
+[![Tests](https://img.shields.io/badge/tests-108%20passing-green)](./)
+[![i18n](https://img.shields.io/badge/i18n-en%20pt%20es-orange)](./)
 
-## Features
+**A comprehensive MCP server that combines 1001 Solana glossary terms with live blockchain data. 16 tools covering term lookup, fuzzy/semantic search, graph-based concept exploration, real-time wallet balances, token prices, transaction analysis, address classification, and swap simulation. Full i18n support (🇺🇸 🇧🇷 🇪🇸).**
 
-### Glossary Intelligence (9 tools)
+Built on [`@stbr/solana-glossary`](https://github.com/solanabr/solana-glossary), [`@solana/web3.js`](https://github.com/solana-labs/solana-web3.js), and [Jupiter Lite API](https://lite-api.jup.ag).
+
+---
+
+## What's Inside
+
+| Feature | Description |
+|---------|-------------|
+| **16 tools** | 9 glossary + 7 live Solana (see full list below) |
+| **Fuzzy search** | Levenshtein + Dice coefficient for typo-tolerant matching |
+| **Semantic search** | TF-IDF + cosine similarity for natural language queries |
+| **Live blockchain** | SOL/token balances, transaction history, address classification via Helius RPC |
+| **DeFi integration** | Real-time token prices and swap simulation via Jupiter |
+| **Knowledge graph** | BFS/DFS traversal on 1200+ cross-references |
+| **Code examples** | Practical Solana code snippets for key terms |
+| **24 known programs** | System, SPL, DeFi, NFT, and infrastructure program identification |
+| **i18n** | Every glossary tool supports `en`, `pt`, and `es` |
+
+---
+
+## Quick Start
+
+### Install & Run
+
+```bash
+git clone https://github.com/lamericano/Solana-Glossary-MCP-Server.git
+cd Solana-Glossary-MCP-Server
+npm install
+npm run build
+```
+
+### Add to Your MCP Client
+
+#### Claude (`claude_desktop_config.json` or `.claude/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "solana-glossary": {
+      "command": "node",
+      "args": ["/absolute/path/to/Solana-Glossary-MCP-Server/dist/server.js"]
+    }
+  }
+}
+```
+
+#### Antigravity (`.gemini/settings.json`)
+
+```json
+{
+  "mcpServers": {
+    "solana-glossary": {
+      "command": "node",
+      "args": ["/absolute/path/to/Solana-Glossary-MCP-Server/dist/server.js"]
+    }
+  }
+}
+```
+
+#### Development (with auto-reload)
+
+```bash
+npm run dev
+```
+
+#### MCP Inspector (visual debugging)
+
+```bash
+npm run inspector
+```
+
+---
+
+## All 16 Tools
+
+### Glossary Tools (9)
+
 | Tool | Description |
 |------|-------------|
-| `lookup_term` | Look up any term by ID, name, or alias. Returns definition, examples, and tags |
-| `search_glossary` | Full-text search across 1000+ Solana terms |
-| `suggest_terms` | Fuzzy matching with Levenshtein distance for misspelled/partial terms |
-| `semantic_search` | Natural language queries using TF-IDF embeddings (zero dependencies) |
-| `list_category` | Browse terms by category (14 categories) |
-| `explain_concept` | Deep-dive via DFS graph traversal of term relationships |
+| `lookup_term` | Look up by ID, name, or alias. Includes code examples, tags, and fuzzy fallback suggestions |
+| `search_glossary` | Full-text search across 1001 terms with ranked results |
+| `suggest_terms` | Fuzzy suggestions for misspelled or partial queries (Levenshtein + Dice) |
+| `semantic_search` | Natural language search using TF-IDF cosine similarity |
+| `list_category` | Browse terms by category (14 available) |
+| `explain_concept` | DFS graph traversal for deep concept exploration |
 | `get_learning_path` | BFS shortest path between two concepts |
 | `compare_terms` | Side-by-side comparison of 2-5 terms |
-| `random_term` | Discover random terms, optionally by category |
+| `random_term` | Random term discovery and quiz generation |
 
-### Live Solana Data (7 tools)
+### Solana Live Tools (7)
+
 | Tool | Description |
 |------|-------------|
-| `get_wallet_balance` | SOL balance with USD conversion via Jupiter prices |
-| `get_token_balance` | SPL token holdings for any wallet |
-| `get_token_price` | Real-time token prices (SOL, USDC, BONK, JUP, etc.) |
-| `get_recent_transactions` | Recent transaction history for any address |
-| `explain_transaction` | Parse and explain any transaction — identifies 20+ known programs |
-| `what_is_this_address` | Classify any address (wallet, program, token mint, known protocol) |
-| `simulate_swap` | Jupiter swap quotes with routing, price impact, and rate info |
+| `get_wallet_balance` | SOL balance + USD conversion via Jupiter |
+| `get_token_balance` | SPL token holdings with USD values |
+| `get_token_price` | Real-time token price (14 known tokens + any mint address) |
+| `get_recent_transactions` | Transaction history with status and timestamps |
+| `explain_transaction` | Parse and decode a transaction with program identification |
+| `what_is_this_address` | Classify any address (wallet, program, token mint, stake, vote) |
+| `simulate_swap` | Jupiter swap simulation with route details and price impact |
 
-### Resources & Prompts
-- **16 resources**: Full glossary, stats, per-category views, term lookups, i18n variants
-- **3 resource templates**: Dynamic term/category/locale lookups
-- **3 prompts**: `solana-context`, `explain-solana-code`, `solana-quiz`
+---
+
+## Tool Examples
+
+### `lookup_term` — Enhanced with code examples
+
+```
+Input:  { term: "pda" }
+```
+
+```
+📖 **Program Derived Address (PDA)**
+
+An account address derived deterministically from a program ID...
+
+🏷️ Category: programming-model
+🔤 Aliases: PDA
+🏷️ Tags: accounts, security, anchor, seeds
+
+💡 **Use case:** Deterministic account addresses derived from seeds — no private key needed
+
+📝 **Code Example:**
+const [pda, bump] = PublicKey.findProgramAddressSync(
+  [Buffer.from("user"), wallet.toBuffer()],
+  programId
+);
+
+🔗 Related Terms:
+  • Seeds: Byte arrays used as inputs to derive a PDA...
+```
+
+**With i18n (`locale: "pt"`):**
+
+```
+Input:  { term: "pda", locale: "pt" }
+```
+
+```
+📖 **Endereço Derivado de Programa (PDA)**
+
+Um endereço de conta derivado deterministicamente de um ID de programa
+e um conjunto de seeds, sem necessidade de uma chave privada correspondente.
+
+🏷️ Categoria: programming-model
+🌐 Idioma: Português
+```
+
+### `suggest_terms` — Fuzzy matching
+
+```
+Input:  { query: "valdator" }
+```
+
+```
+💡 **Suggestions for "valdator"** (3 matches):
+
+1. **Validator** (89% match)
+   A node that validates transactions and produces blocks...
+
+2. **Validator Client** (62% match)
+   Software that runs on validator hardware...
+```
+
+### `semantic_search` — Natural language
+
+```
+Input:  { query: "how does staking work on solana?" }
+```
+
+```
+🧠 **Semantic Search Results** (5 matches):
+
+1. **Staking** [core-protocol] — 82% relevance
+2. **Stake Account** [core-protocol] — 71% relevance
+3. **Delegation** [core-protocol] — 65% relevance
+```
+
+### `get_wallet_balance` — Live SOL balance
+
+```
+Input:  { address: "FhVd...2G8R" }
+```
+
+```
+💰 **Wallet Balance**
+  • Address: FhVd...2G8R
+  • SOL: 12.5000 ($2,125.00 @ $170.00/SOL)
+  • Lamports: 12,500,000,000
+```
+
+### `simulate_swap` — Jupiter swap simulation
+
+```
+Input:  { inputToken: "SOL", outputToken: "USDC", amount: 1 }
+```
+
+```
+🔄 **Swap Simulation** (read-only, no execution)
+  • Input: 1 SOL
+  • Output: ~170.25 USDC
+  • Minimum received: 169.40 USDC
+  • Rate: 1 SOL = 170.25 USDC
+  • Price impact: 0.0012%
+  • Slippage: 0.50%
+
+🗺️ **Route** (1 step):
+  100% → Raydium AMM
+
+⚠️ This is a simulation only. No tokens were swapped.
+```
+
+---
 
 ## Architecture
 
 ```
 src/
-├── server.ts                    # MCP server orchestrator (thin)
-├── tools/
-│   ├── glossary/                # Enhanced glossary tools
-│   │   ├── suggest.ts           # Fuzzy suggestions
-│   │   └── semantic-search.ts   # TF-IDF semantic search
-│   ├── solana/                  # Live blockchain tools
-│   │   ├── wallet.ts            # Wallet balance
-│   │   ├── tokens.ts            # Token balance + price
-│   │   ├── transactions.ts      # History + explain_tx
-│   │   ├── address-info.ts      # Address classification
-│   │   └── swap.ts              # Swap simulation
-│   ├── lookup.ts                # Enhanced with examples/tags
-│   ├── search.ts                # Full-text search
-│   ├── category.ts              # Category listing
-│   ├── explain.ts               # Graph DFS exploration
-│   ├── learning-path.ts         # Graph BFS pathfinding
-│   ├── compare.ts               # Term comparison
-│   └── random.ts                # Random discovery
-├── services/
-│   ├── solana-rpc.ts            # @solana/web3.js wrapper
-│   ├── jupiter.ts               # Jupiter price/swap API
-│   └── embeddings.ts            # TF-IDF semantic engine
-├── data/
-│   ├── known-programs.ts        # 20+ known Solana programs
-│   └── glossary-index.ts        # Examples + tags for terms
+├── server.ts                  # MCP server — wires 16 tools, resources, prompts
+├── graph.ts                   # BFS/DFS graph engine on term cross-references
+├── i18n-resolver.ts           # Locale resolution with caching
 ├── utils/
-│   ├── config.ts                # Environment management
-│   ├── format.ts                # LLM-optimized formatters
-│   └── fuzzy.ts                 # Levenshtein + Dice fuzzy match
-├── graph.ts                     # BFS/DFS relation graph
-├── i18n-resolver.ts             # Locale resolution + caching
+│   ├── config.ts              # RPC + Jupiter API config
+│   ├── format.ts              # SOL/USD formatters, address shortener
+│   └── fuzzy.ts               # Levenshtein + Dice coefficient engine
+├── services/
+│   ├── solana-rpc.ts          # @solana/web3.js wrapper (balance, tokens, TX)
+│   ├── jupiter.ts             # Jupiter Lite API (prices, swap quotes)
+│   └── embeddings.ts          # TF-IDF semantic search engine
+├── data/
+│   ├── known-programs.ts      # 24 known Solana program IDs
+│   └── glossary-index.ts      # Code examples + tag system
+├── tools/
+│   ├── lookup.ts              # lookup_term (enhanced)
+│   ├── search.ts              # search_glossary
+│   ├── category.ts            # list_category
+│   ├── explain.ts             # explain_concept (DFS)
+│   ├── learning-path.ts       # get_learning_path (BFS)
+│   ├── compare.ts             # compare_terms
+│   ├── random.ts              # random_term
+│   ├── glossary/
+│   │   ├── suggest.ts         # suggest_terms (fuzzy)
+│   │   └── semantic-search.ts # semantic_search (TF-IDF)
+│   └── solana/
+│       ├── wallet.ts          # get_wallet_balance
+│       ├── tokens.ts          # get_token_balance + get_token_price
+│       ├── transactions.ts    # get_recent_transactions + explain_transaction
+│       ├── address-info.ts    # what_is_this_address
+│       └── swap.ts            # simulate_swap
 └── resources/
-    └── index.ts                 # MCP resource handlers
+    └── index.ts               # URI-based resource handlers
 ```
 
-## Quick Start
+---
+
+## Testing
 
 ```bash
-# Install dependencies
-npm install
+npm test
+```
 
-# Run in development
-npm run dev
+108 tests covering:
+- All 16 tools (valid input, error handling, i18n, edge cases)
+- Fuzzy search engine (Levenshtein, Dice, combined scoring)
+- TF-IDF semantic search (indexing, cosine similarity, ranking)
+- Graph engine (BFS, DFS, stats, hub detection)
+- i18n resolver (locale validation, caching, fallback)
+- Resources (all URI patterns, localized variants)
+- Format utilities, known programs, glossary index, Jupiter service, RPC service
+- SDK integration (term count, category count, schema validation)
 
-# Build for production
+---
+
+## Environment Variables
+
+All services work with default values (no configuration required), but you can override:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOLANA_RPC_URL` | Helius mainnet | Solana RPC endpoint |
+| `JUPITER_API_KEY` | Included | Jupiter API key for authenticated endpoints |
+| `REQUEST_TIMEOUT_MS` | `10000` | HTTP request timeout |
+
+---
+
+## Development
+
+```bash
+# Type-check
+npm run lint
+
+# Build
 npm run build
 
-# Test with MCP Inspector
+# Run in dev mode (auto-reload)
+npm run dev
+
+# Visual debugging with MCP Inspector
 npm run inspector
+
+# Run tests
+npm test
 ```
 
-## Configuration
+---
 
-No API keys required! All tools work with public endpoints.
+## Tech Stack
 
-For better performance, optionally set:
+| Technology | Role |
+|------------|------|
+| TypeScript | Primary language |
+| @modelcontextprotocol/sdk | Official MCP SDK (v1.12+) |
+| @stbr/solana-glossary | Glossary data layer (1001 terms) |
+| @solana/web3.js | Solana blockchain interaction |
+| Jupiter Lite API | Token prices and swap simulation |
+| Zod | Input validation |
+| tsup | Bundler (ESM) |
+| Vitest | Test framework (108 tests) |
+| Node.js 20+ | Runtime |
 
-```bash
-# Better RPC (free key at https://dev.helius.xyz)
-export HELIUS_API_KEY=your_key_here
-
-# Or custom RPC
-export SOLANA_RPC_URL=https://your-rpc.com
-```
-
-## Client Setup
-
-### Claude Code
-```json
-{
-  "mcpServers": {
-    "solana": {
-      "command": "node",
-      "args": ["path/to/dist/server.js"]
-    }
-  }
-}
-```
-
-### Cursor
-```json
-{
-  "mcpServers": {
-    "solana": {
-      "command": "npx",
-      "args": ["tsx", "path/to/src/server.ts"]
-    }
-  }
-}
-```
-
-### Codex CLI
-```bash
-codex --mcp-server "node path/to/dist/server.js"
-```
-
-## Usage Examples
-
-### Glossary
-```
-> lookup_term({ term: "pda" })
-# Returns definition, related terms, practical code example, and tags
-
-> semantic_search({ query: "how does Solana achieve fast consensus?" })
-# Returns ranked results by conceptual similarity
-
-> suggest_terms({ query: "proff of histry" })
-# Fuzzy matches to "Proof of History" with 78% confidence
-```
-
-### Live Data
-```
-> get_wallet_balance({ address: "vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg" })
-# Returns SOL balance + USD value
-
-> get_token_price({ symbol: "SOL" })
-# Returns live Jupiter price
-
-> simulate_swap({ input_token: "SOL", output_token: "USDC", amount: 10 })
-# Shows route, output amount, price impact
-
-> what_is_this_address({ address: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" })
-# Identifies: "Jupiter Aggregator v6" — DeFi program
-
-> explain_transaction({ signature: "5yG..." })
-# Parses all instructions, identifies programs, shows balance changes
-```
-
-## Technical Highlights
-
-- **Zero external AI dependencies**: Semantic search uses local TF-IDF (no OpenAI/API keys)
-- **20+ known programs**: Recognizes Jupiter, Raydium, Orca, Metaplex, Pyth, and more
-- **14 known tokens**: SOL, USDC, BONK, JUP, WIF, etc. with mint addresses
-- **Fuzzy matching**: Levenshtein distance + Dice coefficient for typo tolerance
-- **Graph engine**: BFS/DFS on 1000+ term cross-references
-- **i18n**: English, Portuguese, Spanish
-- **STDIO transport**: Compatible with all MCP clients
-- **Lightweight**: ~589KB bundled, no heavy dependencies
+---
 
 ## License
 
-MIT
+MIT. Built by [Lamericano](https://github.com/lamericano) for the [Superteam Brazil](https://twitter.com/SuperteamBR) Solana Glossary Bounty.

@@ -1,122 +1,120 @@
 /**
- * Enhanced Glossary Index
- * 
- * Augments glossary terms with practical examples and tags
- * for richer LLM responses.
+ * Glossary Index — Practical Examples & Tag System
+ *
+ * Enriches key glossary terms with practical code examples,
+ * tags for better discoverability, and use-case hints.
  */
 
-/** Tag definitions for glossary terms */
-export type GlossaryTag = 
-  | "defi" | "nft" | "infra" | "security" | "consensus" | "governance"
-  | "token" | "staking" | "wallet" | "dev-tool" | "protocol" | "data"
-  | "zk" | "mev" | "rpc" | "validator" | "web3" | "ai" | "bridge"
-  | "amm" | "lending" | "oracle" | "storage" | "compression";
+export interface TermEnrichment {
+  tags: string[];
+  example?: string;
+  useCase?: string;
+}
 
-/** Practical examples for key Solana terms */
-export const TERM_EXAMPLES: Record<string, { example: string; tags: GlossaryTag[] }> = {
+/**
+ * Enrichment data for frequently-accessed terms.
+ * Keyed by glossary term ID.
+ */
+export const GLOSSARY_INDEX: Record<string, TermEnrichment> = {
   "pda": {
-    example: "PDAs are used to create program-owned accounts. Example: `const [pda, bump] = PublicKey.findProgramAddressSync([Buffer.from('vault'), user.toBuffer()], programId);` — this derives a deterministic address for a user's vault without a private key.",
-    tags: ["protocol", "dev-tool"],
-  },
-  "proof-of-history": {
-    example: "PoH creates a verifiable sequence of time. A validator generates SHA-256 hashes in sequence: hash(prev_hash) → new_hash, creating a cryptographic clock. This allows Solana to order transactions without waiting for consensus on time.",
-    tags: ["consensus", "protocol", "infra"],
-  },
-  "spl-token": {
-    example: "Creating an SPL token: `spl-token create-token` creates a new mint. `spl-token create-account <MINT>` creates a token account. `spl-token mint <MINT> 1000` mints 1000 tokens.",
-    tags: ["token", "dev-tool"],
-  },
-  "program": {
-    example: "Solana programs (smart contracts) are stateless. They read/write to separate accounts. Example Anchor program:\n```rust\n#[program]\npub mod hello {\n    pub fn greet(ctx: Context<Greet>) -> Result<()> {\n        msg!(\"Hello, {}!\", ctx.accounts.user.key());\n        Ok(())\n    }\n}\n```",
-    tags: ["protocol", "dev-tool"],
+    tags: ["accounts", "security", "anchor", "seeds"],
+    example: `const [pda, bump] = PublicKey.findProgramAddressSync(\n  [Buffer.from("user"), wallet.toBuffer()],\n  programId\n);`,
+    useCase: "Deterministic account addresses derived from seeds — no private key needed",
   },
   "cpi": {
-    example: "Cross-Program Invocation lets programs call other programs. Example: a DEX program calls the Token Program to transfer tokens:\n`token::transfer(CpiContext::new(token_program, Transfer { from, to, authority }), amount)?;`",
-    tags: ["protocol", "dev-tool"],
+    tags: ["composability", "programs", "cross-program"],
+    example: `// CPI: invoke the Token Program from your program\ninvoke(\n  &transfer_instruction,\n  &[source.clone(), destination.clone(), authority.clone()]\n)?;`,
+    useCase: "One program calling another — the backbone of Solana composability",
   },
-  "account": {
-    example: "Every piece of data on Solana lives in an account. Accounts have: owner (program that can modify it), data (byte array), lamports (SOL balance), and rent-exemption status.",
-    tags: ["protocol", "infra"],
+  "token-account": {
+    tags: ["spl", "tokens", "wallet"],
+    example: `const ata = getAssociatedTokenAddressSync(\n  mintAddress,\n  walletAddress\n);`,
+    useCase: "Holds SPL tokens for a specific mint + owner pair",
   },
-  "rent": {
-    example: "Accounts must maintain a minimum SOL balance to be rent-exempt (~0.00089 SOL for 128 bytes). Check with: `const rent = await connection.getMinimumBalanceForRentExemption(dataSize);`",
-    tags: ["protocol", "infra"],
+  "proof-of-history": {
+    tags: ["consensus", "performance", "core"],
+    example: `// PoH is a VDF (Verifiable Delay Function)\n// Each hash proves that time has passed:\nhash_n = SHA256(hash_n-1 + data)`,
+    useCase: "Cryptographic clock that orders transactions without consensus overhead",
   },
   "transaction": {
-    example: "A Solana transaction contains: recent blockhash (for expiry), fee payer, instructions array, and signatures. Max size: 1232 bytes. Transactions are atomic — all instructions succeed or all fail.",
-    tags: ["protocol", "infra"],
+    tags: ["core", "signing", "instructions"],
+    example: `const tx = new Transaction().add(\n  SystemProgram.transfer({\n    fromPubkey: sender,\n    toPubkey: receiver,\n    lamports: 1_000_000_000, // 1 SOL\n  })\n);\nawait sendAndConfirmTransaction(connection, tx, [senderKeypair]);`,
+    useCase: "Atomic unit of execution on Solana — contains one or more instructions",
   },
-  "anchor": {
-    example: "Anchor framework simplifies Solana development:\n`anchor init myproject` → creates project\n`anchor build` → compiles\n`anchor test` → runs tests\n`anchor deploy` → deploys to cluster",
-    tags: ["dev-tool"],
-  },
-  "amm": {
-    example: "Automated Market Makers on Solana (Orca, Raydium) use liquidity pools. Price is determined by the constant product formula: x * y = k. LPs earn fees proportional to their share.",
-    tags: ["defi", "amm"],
+  "rent": {
+    tags: ["economics", "accounts", "storage"],
+    example: `const rentExempt = await connection.getMinimumBalanceForRentExemption(\n  accountDataSize // bytes\n);`,
+    useCase: "SOL deposit to keep an account alive — 2 years rent = rent-exempt",
   },
   "validator": {
-    example: "Validators process transactions and produce blocks. Requirements: ~1.1 SOL/day in vote costs, high-end hardware (24+ cores, 512GB RAM, NVMe SSD). Run with: `solana-validator --identity keypair.json --vote-account vote.json`",
-    tags: ["infra", "validator", "staking"],
+    tags: ["consensus", "staking", "network"],
+    useCase: "Runs the Solana software, validates transactions, produces blocks",
   },
   "staking": {
-    example: "Stake SOL to earn rewards (~7% APY): `solana create-stake-account stake.json 100` then `solana delegate-stake stake.json <VOTE_ACCOUNT>`. Liquid staking (JitoSOL, mSOL) lets you use staked SOL in DeFi.",
-    tags: ["staking", "defi"],
+    tags: ["economics", "validators", "rewards"],
+    example: `// Delegate stake to a validator\nconst tx = StakeProgram.delegate({\n  stakePubkey,\n  authorizedPubkey: wallet,\n  votePubkey: validatorVote,\n});`,
+    useCase: "Lock SOL with a validator to earn rewards and secure the network",
   },
   "nft": {
-    example: "Solana NFTs are SPL tokens with 0 decimals and supply of 1. Metadata is stored via Metaplex: name, symbol, URI (pointing to off-chain JSON with image). Create with Metaplex Sugar: `sugar launch`",
-    tags: ["nft", "token"],
+    tags: ["tokens", "metaplex", "digital-assets"],
+    example: `// Create NFT with Metaplex\nconst { nft } = await metaplex.nfts().create({\n  uri: "https://arweave.net/.../metadata.json",\n  name: "My NFT",\n  sellerFeeBasisPoints: 500, // 5% royalty\n});`,
+    useCase: "Non-fungible token — unique digital asset on Solana",
+  },
+  "anchor": {
+    tags: ["framework", "rust", "idl", "dev-tools"],
+    example: `#[program]\npub mod my_program {\n  pub fn initialize(ctx: Context<Initialize>) -> Result<()> {\n    ctx.accounts.data.authority = ctx.accounts.signer.key();\n    Ok(())\n  }\n}`,
+    useCase: "Rust framework for Solana programs — handles serialization, security checks, IDL",
+  },
+  "spl-token": {
+    tags: ["tokens", "fungible", "standard"],
+    example: `// Create a new mint\nconst mint = await createMint(\n  connection,\n  payer,\n  mintAuthority,\n  freezeAuthority,\n  9 // decimals\n);`,
+    useCase: "Solana's standard for fungible and non-fungible tokens",
+  },
+  "keypair": {
+    tags: ["cryptography", "wallet", "signing"],
+    example: `import { Keypair } from "@solana/web3.js";\nconst kp = Keypair.generate();\nconsole.log("Public:", kp.publicKey.toBase58());\nconsole.log("Secret:", bs58.encode(kp.secretKey));`,
+    useCase: "Ed25519 key pair — public key is the address, secret key signs transactions",
+  },
+  "lamport": {
+    tags: ["economics", "units", "sol"],
+    useCase: "Smallest unit of SOL — 1 SOL = 1,000,000,000 lamports",
+  },
+  "rust": {
+    tags: ["language", "programs", "systems"],
+    useCase: "Primary language for writing Solana on-chain programs",
   },
   "jupiter": {
-    example: "Jupiter aggregates all Solana DEX liquidity. API usage: `GET https://quote-api.jup.ag/v6/quote?inputMint=SOL&outputMint=USDC&amount=1000000000` returns the best swap route.",
-    tags: ["defi", "amm", "infra"],
+    tags: ["defi", "dex", "aggregator", "swaps"],
+    useCase: "Leading DEX aggregator on Solana — finds best swap routes across all DEXes",
   },
-  "rpc": {
-    example: "Solana RPC methods: `getBalance`, `getTransaction`, `sendTransaction`, `getTokenAccountsByOwner`. Use with: `const conn = new Connection('https://api.mainnet-beta.solana.com');`",
-    tags: ["rpc", "infra", "dev-tool"],
-  },
-  "versioned-transaction": {
-    example: "Versioned transactions support Address Lookup Tables (ALTs) to include more accounts: `new VersionedTransaction(new TransactionMessage({ payerKey, recentBlockhash, instructions }).compileToV0Message(lookupTables));`",
-    tags: ["protocol", "dev-tool"],
-  },
-  "priority-fees": {
-    example: "Set priority fees to get faster inclusion: `ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50000 })`. Higher fees = higher priority in the block scheduler.",
-    tags: ["protocol", "infra", "mev"],
-  },
-  "compressed-nft": {
-    example: "Compressed NFTs use state compression (Merkle trees) to store NFTs on-chain at ~100x lower cost. Tree creation: `createTree({ maxDepth: 14, maxBufferSize: 64 })` supports ~16,384 NFTs.",
-    tags: ["nft", "compression", "zk"],
-  },
-  "metaplex": {
-    example: "Metaplex provides NFT infrastructure: Token Metadata (metadata for tokens), Candy Machine (minting), Bubblegum (compressed NFTs), and Core (next-gen NFT standard).",
-    tags: ["nft", "infra", "dev-tool"],
-  },
-  "blink": {
-    example: "Solana Actions & Blinks turn any URL into a signable Solana transaction. Example: A 'Donate' blink creates a transfer transaction when clicked. Blinks work in wallets, X (Twitter), and any web page.",
-    tags: ["web3", "protocol"],
+  "amm": {
+    tags: ["defi", "liquidity", "trading"],
+    useCase: "Automated Market Maker — enables token swaps via liquidity pools",
   },
 };
 
-/** Get practical example for a term */
-export function getTermExample(termId: string): { example: string; tags: GlossaryTag[] } | null {
-  return TERM_EXAMPLES[termId] ?? null;
-}
+const tagIndex = new Map<string, string[]>();
 
-/** Get all terms that match a specific tag */
-export function getTermsByTag(tag: GlossaryTag): string[] {
-  return Object.entries(TERM_EXAMPLES)
-    .filter(([_, data]) => data.tags.includes(tag))
-    .map(([id]) => id);
-}
-
-/** Get all available tags with counts */
-export function getAllTags(): Array<{ tag: GlossaryTag; count: number }> {
-  const counts = new Map<GlossaryTag, number>();
-  for (const data of Object.values(TERM_EXAMPLES)) {
-    for (const tag of data.tags) {
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
+// Build tag index
+for (const [id, enrichment] of Object.entries(GLOSSARY_INDEX)) {
+  for (const tag of enrichment.tags) {
+    const existing = tagIndex.get(tag) ?? [];
+    existing.push(id);
+    tagIndex.set(tag, existing);
   }
-  return Array.from(counts.entries())
-    .map(([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count);
+}
+
+/** Get enrichment data for a term */
+export function getEnrichment(termId: string): TermEnrichment | undefined {
+  return GLOSSARY_INDEX[termId];
+}
+
+/** Search terms by tag */
+export function getTermsByTag(tag: string): string[] {
+  return tagIndex.get(tag.toLowerCase()) ?? [];
+}
+
+/** Get all available tags */
+export function getAllTags(): string[] {
+  return [...tagIndex.keys()].sort();
 }

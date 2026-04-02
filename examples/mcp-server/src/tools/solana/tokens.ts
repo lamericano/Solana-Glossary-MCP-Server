@@ -1,101 +1,112 @@
 /**
- * get_token_balance — Get SPL token balances for a wallet
- * get_token_price — Get live token price from Jupiter
+ * get_token_balance — SPL token holdings for a wallet
+ * get_token_price — Real-time token price via Jupiter
  */
 
 import { z } from "zod";
-import { getTokenBalances, isValidAddress } from "../../services/solana-rpc.js";
-import { getTokenPrice as fetchPrice, KNOWN_TOKENS, resolveTokenMint } from "../../services/jupiter.js";
-import { formatUsd, formatNumber } from "../../utils/format.js";
+import { getTokenAccounts, isValidAddress } from "../../services/solana-rpc.js";
+import { getTokenPrice as fetchTokenPrice, getTokenPrices, resolveToken, KNOWN_TOKENS } from "../../services/jupiter.js";
+import { formatUsd, shortenAddress } from "../../utils/format.js";
 
-// ─── Token Balance ──────────────────────────────────────────
+// ─── get_token_balance ───────────────────────────────────────────
 
-export const tokenBalanceSchema = z.object({
-  address: z.string().describe("Solana wallet address to check token balances for"),
-  token: z.string().optional().describe("Filter by specific token symbol (e.g., 'USDC') or mint address. If omitted, returns all token balances."),
+export const getTokenBalanceSchema = z.object({
+  address: z.string().describe("Solana wallet address to check token holdings"),
+  showEmpty: z.boolean().optional().describe("Include zero-balance token accounts (default: false)"),
 });
 
-export type TokenBalanceInput = z.infer<typeof tokenBalanceSchema>;
+export type GetTokenBalanceInput = z.infer<typeof getTokenBalanceSchema>;
 
-export async function tokenBalance(input: TokenBalanceInput): Promise<string> {
+export async function getTokenBalance(input: GetTokenBalanceInput): Promise<string> {
   if (!isValidAddress(input.address)) {
-    return `❌ Invalid Solana address: "${input.address}".`;
+    return `❌ Invalid Solana address: "${input.address}"`;
   }
 
   try {
-    let balances = await getTokenBalances(input.address);
+    const accounts = await getTokenAccounts(input.address);
 
-    // Filter by specific token if requested
-    if (input.token) {
-      const resolved = resolveTokenMint(input.token);
-      if (resolved) {
-        balances = balances.filter(b => b.mint === resolved.mint);
-      } else {
-        // Try matching by mint directly
-        balances = balances.filter(b => b.mint === input.token);
-      }
+    if (accounts.length === 0) {
+      return `📭 No SPL token accounts found for ${shortenAddress(input.address)}.\n\nThis wallet may only hold SOL. Use 'get_wallet_balance' to check.`;
     }
 
-    if (balances.length === 0) {
-      const filterMsg = input.token ? ` for token "${input.token}"` : "";
-      return `📭 No token balances found${filterMsg} in wallet \`${input.address}\`.`;
+    // Try to get prices for all mints
+    const mints = accounts.map((a) => a.mint);
+    let prices = new Map<string, number>();
+    try {
+      const priceData = await getTokenPrices(mints);
+      for (const [mint, data] of priceData) {
+        prices.set(mint, data.price);
+      }
+    } catch {
+      // Prices are optional
     }
 
     const lines = [
-      `🪙 **Token Balances** for \`${input.address}\``,
-      `📊 ${balances.length} token${balances.length !== 1 ? "s" : ""}:`,
+      `🪙 **Token Holdings for ${shortenAddress(input.address)}** (${accounts.length} tokens):`,
       ``,
     ];
 
-    for (const b of balances.slice(0, 20)) {
-      // Try to find symbol
-      let symbol = "???";
-      for (const [sym, data] of Object.entries(KNOWN_TOKENS)) {
-        if (data.mint === b.mint) { symbol = sym; break; }
+    let totalUsd = 0;
+
+    for (const account of accounts) {
+      const token = resolveToken(account.mint);
+      const symbol = token?.symbol ?? shortenAddress(account.mint);
+      const price = prices.get(account.mint);
+      let valueStr = "";
+
+      if (price && account.uiAmount > 0) {
+        const value = account.uiAmount * price;
+        totalUsd += value;
+        valueStr = ` — ${formatUsd(value)}`;
       }
 
-      const amount = b.uiAmount !== null ? formatNumber(b.uiAmount) : b.amount;
-      lines.push(`• **${symbol}**: ${amount}`);
-      if (symbol === "???") {
-        lines.push(`  Mint: \`${b.mint}\``);
-      }
+      lines.push(`  • **${symbol}:** ${account.uiAmount.toLocaleString()}${valueStr}`);
     }
 
-    if (balances.length > 20) {
-      lines.push(``, `_…and ${balances.length - 20} more tokens._`);
+    if (totalUsd > 0) {
+      lines.push(``, `💵 **Estimated total value:** ${formatUsd(totalUsd)}`);
     }
 
     return lines.join("\n");
-  } catch (err: any) {
-    return `❌ Failed to fetch token balances: ${err.message ?? "RPC error"}`;
+  } catch (error) {
+    return `❌ Error fetching token accounts: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 }
 
-// ─── Token Price ────────────────────────────────────────────
+// ─── get_token_price ─────────────────────────────────────────────
 
-export const tokenPriceSchema = z.object({
-  symbol: z.string().describe("Token symbol (e.g., 'SOL', 'USDC', 'BONK', 'JUP') or mint address"),
+export const getTokenPriceSchema = z.object({
+  token: z.string().describe(`Token symbol or mint address. Known tokens: ${KNOWN_TOKENS.map((t) => t.symbol).join(", ")}`),
 });
 
-export type TokenPriceInput = z.infer<typeof tokenPriceSchema>;
+export type GetTokenPriceInput = z.infer<typeof getTokenPriceSchema>;
 
-export async function tokenPrice(input: TokenPriceInput): Promise<string> {
+export async function getTokenPriceTool(input: GetTokenPriceInput): Promise<string> {
   try {
-    const price = await fetchPrice(input.symbol);
+    const price = await fetchTokenPrice(input.token);
 
     if (!price) {
-      const available = Object.keys(KNOWN_TOKENS).join(", ");
-      return `❌ Could not find token "${input.symbol}". Known tokens: ${available}`;
+      return `❌ Could not find price for "${input.token}".\n\nKnown tokens: ${KNOWN_TOKENS.map((t) => t.symbol).join(", ")}\n\nYou can also pass a token mint address directly.`;
     }
 
-    return [
-      `📈 **${price.symbol} Price**`,
+    const token = resolveToken(input.token);
+
+    const lines = [
+      `📊 **${price.symbol} Price**`,
       ``,
-      `💵 **${formatUsd(price.price)}**`,
-      ``,
-      `_Price from Jupiter aggregator (real-time)._`,
-    ].join("\n");
-  } catch (err: any) {
-    return `❌ Failed to fetch price: ${err.message ?? "Jupiter API error"}`;
+      `  • **Price:** ${formatUsd(price.price)}`,
+      `  • **Mint:** ${shortenAddress(price.mint)}`,
+    ];
+
+    if (token) {
+      lines.push(`  • **Name:** ${token.name}`);
+      lines.push(`  • **Decimals:** ${token.decimals}`);
+    }
+
+    lines.push(``, `_Source: ${price.source}_`);
+
+    return lines.join("\n");
+  } catch (error) {
+    return `❌ Error fetching token price: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 }
